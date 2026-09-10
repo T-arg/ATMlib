@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <inttypes.h>
 #include <Arduino.h>
+#include "ATMcmds.h"
 
 #define CH_ZERO             0
 #define CH_ONE              1

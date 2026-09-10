@@ -11,7 +11,8 @@ Melody	KEYWORD1
 play	KEYWORD2
 playPause	KEYWORD2
 stop	KEYWORD2
-toggleMute	KEYWORD2
+muteChannel	KEYWORD2
+unMuteChannel	KEYWORD2
 
 #######################################
 # Instances (KEYWORD2)

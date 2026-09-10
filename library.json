@@ -5,9 +5,9 @@
     "repository":
     {
         "type": "git",
-        "url": "https://github.com/TEAMarg/ATMlib.git"
+        "url": "https://github.com/T-arg/ATMlib.git"
     },
-    "version": "1.2.6",
+    "version": "1.2.7",
     "exclude": "extras",
     "frameworks": "arduino",
     "platforms": "atmelavr"
