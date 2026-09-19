@@ -6,7 +6,6 @@
 // let's define command list for the ATMlib, that might be easier to use the AMT library
 
 // Let's define the basic commands
-#define ATM_STOP      	 				    0x00+0
 #define ATM_DELAY(delay) 				    0x9F+(delay)
 #define ATM_LONG_DELAY(delay)			    0x9F,(delay)
 #define ATM_GOTO(onceGoto)				    0xFC,(onceGoto)
