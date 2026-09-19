@@ -280,6 +280,7 @@ void ATM_playroutine() {
             case 2: case 5: // Slide volume/frequency ON advanced
               ch->volFreSlide = pgm_read_byte(ch->ptr++);
               ch->volFreConfig = pgm_read_byte(ch->ptr++);
+              if ((cmd - 64) == 5) ch->volFreConfig |= 0x40;
               break;
             case 3: case 6: // Slide volume/frequency OFF (same as 0x01 0x00)
               ch->volFreSlide = 0;
