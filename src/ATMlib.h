@@ -5,7 +5,7 @@
 #include <Arduino.h>
 #include "ATMcmds.h"
 #if __has_include("ATMconfig.h")
-#include "ATMconfig.h"
+  #include "ATMconfig.h"
 #endif
 
 #ifndef ATM_WAVE_PULSE
@@ -301,5 +301,10 @@ ISR(TIMER4_OVF_vect, ISR_NAKED) { \
                   [vol]  "M" (offsetof(Oscillator, vol)) \
               ); \
 }
+
+#ifndef ATMLIBIMPL_ONCE
+#define ATMLIBIMPL_ONCE
+#include "ATMlibimpl.h"
+#endif
 
 #endif
