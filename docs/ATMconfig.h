@@ -23,7 +23,7 @@
 #define ATM_WAVE_CH1 ATM_WAVE_SQUARE
 #endif
 #ifndef ATM_WAVE_CH2
-#define ATM_WAVE_CH2 ATM_WAVE_OFF
+#define ATM_WAVE_CH2 ATM_WAVE_SAW
 #endif
 #ifndef ATM_WAVE_CH3
 #define ATM_WAVE_CH3 ATM_WAVE_NOISE
