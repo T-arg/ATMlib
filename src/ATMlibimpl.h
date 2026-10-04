@@ -40,7 +40,11 @@ uint8_t atmSfxMask;
 
 // note 0 is silence. Octaves that are compiled out are absent from the table.
 // With every octave on, indices match the song note numbers (1 = C2 … 63 = D7).
+#if ATM_OCTAVE_2 && ATM_OCTAVE_3 && ATM_OCTAVE_4 && ATM_OCTAVE_5 && ATM_OCTAVE_6 && ATM_OCTAVE_7
+const word noteTable[64] PROGMEM = {
+#else
 const word noteTable[] PROGMEM = {
+#endif
   0,
 #if ATM_OCTAVE_2
   262,  277,  294,  311,  330,  349,  370,  392,  415,  440,  466,  494,
@@ -63,7 +67,7 @@ const word noteTable[] PROGMEM = {
 };
 
 #if ATM_OCTAVE_2 && ATM_OCTAVE_3 && ATM_OCTAVE_4 && ATM_OCTAVE_5 && ATM_OCTAVE_6 && ATM_OCTAVE_7
-#define ATM__FREQ(note) pgm_read_word(&noteTable[(note)])
+#define ATM__FREQ(note) pgm_read_word(&noteTable[note])
 #else
 // Excluded notes, and anything outside 1..63, are silent. Song bytes are unchanged.
 static inline uint16_t atmNoteFreq(int note) {
@@ -357,7 +361,11 @@ __attribute__((used))
 void ATM_playroutine() {
   ch_t *ch;
 
-  for (byte pass = 0; pass < (ATM_FUNC_SFX ? 2 : 1); pass++)
+#if ATM_FUNC_SFX
+  for (byte pass = 0; pass < 2; pass++)
+#else
+  for (byte pass = 0; pass < 1; pass++)
+#endif
   for (byte n = 0; n < 4; n++)
   {
     byte out = 1;
@@ -481,11 +489,11 @@ void ATM_playroutine() {
         byte cmd = pgm_read_byte(ch->ptr++);
         if (cmd < 64) {
           // 0 … 63 : NOTE ON/OFF
-          if (ch->note = cmd) {
 #if ATM_FX_TRANSPOSE
-            ch->note += ch->transConfig;
+          if (ch->note = cmd) ch->note += ch->transConfig;
+#else
+          ch->note = cmd;
 #endif
-          }
           ch->freq = ATM__FREQ(ch->note);
 #if ATM_FX_VOL_SLIDE || ATM_FX_FREQ_SLIDE
           if (!ch->volFreConfig) ch->vol = ch->reCount;
@@ -505,7 +513,20 @@ void ATM_playroutine() {
               ch->reCount = ch->vol;
               break;
 #endif
-#if ATM_FX_VOL_SLIDE
+#if ATM_FX_VOL_SLIDE && ATM_FX_FREQ_SLIDE
+            case 1: case 4: // Slide volume/frequency ON
+              ch->volFreSlide = pgm_read_byte(ch->ptr++);
+              ch->volFreConfig = (cmd - 64) == 1 ? 0x00 : 0x40;
+              break;
+            case 2: case 5: // Slide volume/frequency ON advanced
+              ch->volFreSlide = pgm_read_byte(ch->ptr++);
+              ch->volFreConfig = pgm_read_byte(ch->ptr++);
+              if ((cmd - 64) == 5) ch->volFreConfig |= 0x40;
+              break;
+            case 3: case 6: // Slide volume/frequency OFF (same as 0x01 0x00)
+              ch->volFreSlide = 0;
+              break;
+#elif ATM_FX_VOL_SLIDE
             case 1: // Slide volume ON
               ch->volFreSlide = pgm_read_byte(ch->ptr++);
               ch->volFreConfig = 0x00;
@@ -517,8 +538,7 @@ void ATM_playroutine() {
             case 3: // Slide volume OFF
               ch->volFreSlide = 0;
               break;
-#endif
-#if ATM_FX_FREQ_SLIDE
+#elif ATM_FX_FREQ_SLIDE
             case 4: // Slide frequency ON
               ch->volFreSlide = pgm_read_byte(ch->ptr++);
               ch->volFreConfig = 0x40;
@@ -560,7 +580,15 @@ void ATM_playroutine() {
               ch->transConfig = 0;
               break;
 #endif
-#if ATM_FX_TREMOLO
+#if ATM_FX_TREMOLO && ATM_FX_VIBRATO
+            case 14: case 16: // SET Tremolo/Vibrato
+              ch->treviDepth = pgm_read_word(ch->ptr++);
+              ch->treviConfig = pgm_read_word(ch->ptr++) + ((cmd - 64) == 14 ? 0x00 : 0x40);
+              break;
+            case 15: case 17: // Tremolo/Vibrato OFF
+              ch->treviDepth = 0;
+              break;
+#elif ATM_FX_TREMOLO
             case 14: // SET Tremolo
               ch->treviDepth = pgm_read_word(ch->ptr++);
               ch->treviConfig = pgm_read_word(ch->ptr++);
@@ -568,8 +596,7 @@ void ATM_playroutine() {
             case 15: // Tremolo OFF
               ch->treviDepth = 0;
               break;
-#endif
-#if ATM_FX_VIBRATO
+#elif ATM_FX_VIBRATO
             case 16: // SET Vibrato
               ch->treviDepth = pgm_read_word(ch->ptr++);
               ch->treviConfig = pgm_read_word(ch->ptr++) + 0x40;
