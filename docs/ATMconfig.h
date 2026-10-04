@@ -38,4 +38,111 @@
 #define ATM_ALT_WIRING 0
 #endif
 
+// ---------------------------------------------------------------------------
+// Effects, functions, octaves. 1 or TRUE = compile in. 0 or FALSE = leave out.
+//
+// WARNING: the tracker still writes the same song bytes. Nothing is stripped
+// from a score. If a flag is 0 and a song or SFX still uses that effect,
+// function, or octave, the sketch breaks: the player ignores the command and
+// does not consume its parameter bytes, a removed function will not compile,
+// and an excluded note is silent. That is the sketch author's responsibility.
+//
+// A sketch with no ATMconfig.h compiles all of these in. The 1s below match that.
+// ATM.play() is always compiled. ATM_FUNC_PLAYPAUSE needs PAUSE and RESUME.
+// ---------------------------------------------------------------------------
+
+// Effects (command + per-tick code, and the channel fields they need)
+#ifndef ATM_FX_VOLUME
+#define ATM_FX_VOLUME 1       // ATM_VOL
+#endif
+#ifndef ATM_FX_VOL_SLIDE
+#define ATM_FX_VOL_SLIDE 1    // ATM_SL_VOL / ATM_SL_VOL_ADV / ATM_SL_VOL_OFF
+#endif
+#ifndef ATM_FX_FREQ_SLIDE
+#define ATM_FX_FREQ_SLIDE 1   // ATM_SL_FRQ / ATM_SL_FRQ_ADV / ATM_SL_FRQ_OFF
+#endif
+#ifndef ATM_FX_ARP
+#define ATM_FX_ARP 1          // ATM_ARP / ATM_ARP_OFF
+#endif
+#ifndef ATM_FX_NOISE
+#define ATM_FX_NOISE 1        // ATM_NOISE / ATM_NOISE_OFF (retrigger)
+#endif
+#ifndef ATM_FX_TRANSPOSE
+#define ATM_FX_TRANSPOSE 1    // ATM_ADD_TRA / ATM_SET_TRA / ATM_TRA_OFF
+#endif
+#ifndef ATM_FX_TREMOLO
+#define ATM_FX_TREMOLO 1      // ATM_TREM / ATM_TREM_OFF
+#endif
+#ifndef ATM_FX_VIBRATO
+#define ATM_FX_VIBRATO 1      // ATM_VIB / ATM_VIB_OFF
+#endif
+#ifndef ATM_FX_GLISSANDO
+#define ATM_FX_GLISSANDO 1    // ATM_GLIS / ATM_GLIS_OFF
+#endif
+#ifndef ATM_FX_NOTE_CUT
+#define ATM_FX_NOTE_CUT 1     // ATM_CUT / ATM_CUT_OFF
+#endif
+#ifndef ATM_FX_CUE
+#define ATM_FX_CUE 1          // ATM_CUE command (stores the byte)
+#endif
+#ifndef ATM_FX_TEMPO
+#define ATM_FX_TEMPO 1        // ATM_ADD_TEMPO / ATM_SET_TEMPO in the score
+#endif
+#ifndef ATM_FX_GOTO_ADV
+#define ATM_FX_GOTO_ADV 1     // ATM_GOTO_ADV
+#endif
+#ifndef ATM_FX_STOP
+#define ATM_FX_STOP 1         // ATM_STOP_CHAN
+#endif
+
+// Functions (calling one that is 0 is a compile error)
+#ifndef ATM_FUNC_STOP
+#define ATM_FUNC_STOP 1       // ATM.stop()
+#endif
+#ifndef ATM_FUNC_PAUSE
+#define ATM_FUNC_PAUSE 1      // ATM.pause()
+#endif
+#ifndef ATM_FUNC_RESUME
+#define ATM_FUNC_RESUME 1     // ATM.resume()
+#endif
+#ifndef ATM_FUNC_PLAYPAUSE
+#define ATM_FUNC_PLAYPAUSE 1  // ATM.playPause() — needs PAUSE and RESUME
+#endif
+#ifndef ATM_FUNC_MUTE
+#define ATM_FUNC_MUTE 1       // ATM.muteChannel()
+#endif
+#ifndef ATM_FUNC_UNMUTE
+#define ATM_FUNC_UNMUTE 1     // ATM.unMuteChannel()
+#endif
+#ifndef ATM_FUNC_SFX
+#define ATM_FUNC_SFX 1        // ATM.playSfx()
+#endif
+#ifndef ATM_FUNC_TEMPO
+#define ATM_FUNC_TEMPO 1      // ATM.setTempo()
+#endif
+#ifndef ATM_FUNC_CUE
+#define ATM_FUNC_CUE 1        // ATM.check() / ATM.check(id)
+#endif
+
+// Notes. Each flag is one octave of the 1..63 note numbers.
+// C2-B2, C3-B3, C4-B4, C5-B5, C6-B6, C7-D7. Excluded notes are silent.
+#ifndef ATM_OCTAVE_2
+#define ATM_OCTAVE_2 1        // C2-B2
+#endif
+#ifndef ATM_OCTAVE_3
+#define ATM_OCTAVE_3 1        // C3-B3
+#endif
+#ifndef ATM_OCTAVE_4
+#define ATM_OCTAVE_4 1        // C4-B4
+#endif
+#ifndef ATM_OCTAVE_5
+#define ATM_OCTAVE_5 1        // C5-B5
+#endif
+#ifndef ATM_OCTAVE_6
+#define ATM_OCTAVE_6 1        // C6-B6
+#endif
+#ifndef ATM_OCTAVE_7
+#define ATM_OCTAVE_7 1        // C7-D7
+#endif
+
 #endif

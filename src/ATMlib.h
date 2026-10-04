@@ -34,6 +34,101 @@
 #define ATM_ALT_WIRING 0
 #endif
 
+// No ATMconfig.h: every effect, function, and octave stays in, as before.
+#ifndef ATM_FX_VOLUME
+#define ATM_FX_VOLUME 1
+#endif
+#ifndef ATM_FX_VOL_SLIDE
+#define ATM_FX_VOL_SLIDE 1
+#endif
+#ifndef ATM_FX_FREQ_SLIDE
+#define ATM_FX_FREQ_SLIDE 1
+#endif
+#ifndef ATM_FX_ARP
+#define ATM_FX_ARP 1
+#endif
+#ifndef ATM_FX_NOISE
+#define ATM_FX_NOISE 1
+#endif
+#ifndef ATM_FX_TRANSPOSE
+#define ATM_FX_TRANSPOSE 1
+#endif
+#ifndef ATM_FX_TREMOLO
+#define ATM_FX_TREMOLO 1
+#endif
+#ifndef ATM_FX_VIBRATO
+#define ATM_FX_VIBRATO 1
+#endif
+#ifndef ATM_FX_GLISSANDO
+#define ATM_FX_GLISSANDO 1
+#endif
+#ifndef ATM_FX_NOTE_CUT
+#define ATM_FX_NOTE_CUT 1
+#endif
+#ifndef ATM_FX_CUE
+#define ATM_FX_CUE 1
+#endif
+#ifndef ATM_FX_TEMPO
+#define ATM_FX_TEMPO 1
+#endif
+#ifndef ATM_FX_GOTO_ADV
+#define ATM_FX_GOTO_ADV 1
+#endif
+#ifndef ATM_FX_STOP
+#define ATM_FX_STOP 1
+#endif
+
+#ifndef ATM_FUNC_STOP
+#define ATM_FUNC_STOP 1
+#endif
+#ifndef ATM_FUNC_PAUSE
+#define ATM_FUNC_PAUSE 1
+#endif
+#ifndef ATM_FUNC_RESUME
+#define ATM_FUNC_RESUME 1
+#endif
+#ifndef ATM_FUNC_PLAYPAUSE
+#define ATM_FUNC_PLAYPAUSE 1
+#endif
+#ifndef ATM_FUNC_MUTE
+#define ATM_FUNC_MUTE 1
+#endif
+#ifndef ATM_FUNC_UNMUTE
+#define ATM_FUNC_UNMUTE 1
+#endif
+#ifndef ATM_FUNC_SFX
+#define ATM_FUNC_SFX 1
+#endif
+#ifndef ATM_FUNC_TEMPO
+#define ATM_FUNC_TEMPO 1
+#endif
+#ifndef ATM_FUNC_CUE
+#define ATM_FUNC_CUE 1
+#endif
+
+#ifndef ATM_OCTAVE_2
+#define ATM_OCTAVE_2 1
+#endif
+#ifndef ATM_OCTAVE_3
+#define ATM_OCTAVE_3 1
+#endif
+#ifndef ATM_OCTAVE_4
+#define ATM_OCTAVE_4 1
+#endif
+#ifndef ATM_OCTAVE_5
+#define ATM_OCTAVE_5 1
+#endif
+#ifndef ATM_OCTAVE_6
+#define ATM_OCTAVE_6 1
+#endif
+#ifndef ATM_OCTAVE_7
+#define ATM_OCTAVE_7 1
+#endif
+
+#if ATM_FUNC_PLAYPAUSE && (!ATM_FUNC_PAUSE || !ATM_FUNC_RESUME)
+#error ATM_FUNC_PLAYPAUSE needs ATM_FUNC_PAUSE and ATM_FUNC_RESUME
+#endif
+
 #define CH_ZERO             0
 #define CH_ONE              1
 #define CH_TWO              2
@@ -52,22 +147,40 @@ class ATMsynth {
     ATMsynth() {};
 
     void play(const byte *song);
+#if ATM_FUNC_PLAYPAUSE
     void playPause();
+#endif
+#if ATM_FUNC_PAUSE
     void pause();
+#endif
+#if ATM_FUNC_RESUME
     void resume();
+#endif
+#if ATM_FUNC_STOP
     void stop();
+#endif
+#if ATM_FUNC_MUTE
     void muteChannel(byte ch);
+#endif
+#if ATM_FUNC_UNMUTE
     void unMuteChannel(byte ch);
+#endif
 
+#if ATM_FUNC_SFX
     // Play a raw ATM_SFX_TRACK on one channel (music on other channels keeps going)
     void playSfx(const byte *track, byte ch);
+#endif
+#if ATM_FUNC_TEMPO
     // Set the tempo
     void setTempo(byte t);
+#endif
 
+#if ATM_FUNC_CUE
     // Last ATM_CUE byte from the song/SFX (0 = none since last read)
     uint8_t check();
     // 1 if last cue equals id (does not clear)
     uint8_t check(uint8_t id);
+#endif
 };
 
 typedef struct {

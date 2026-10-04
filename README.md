@@ -9,6 +9,10 @@ Contributers:
 * Davey Taylor - ATMsynth - Effects
 * Joeri Gantois - Effects
 
+### Compile-time config
+
+Copy `docs/ATMconfig.h` into the sketch as `ATMconfig.h`. Waveforms, effects, functions, and octaves are fixed at compile time. Every flag defaults to on, including when the sketch has no `ATMconfig.h`. Song bytes are not rewritten: excluding an effect, function, or octave and still using it in a score is the sketch author's responsibility. See the warning in `ATMconfig.h`.
+
 ### FILE/ARRAY FORMAT DESCRIPTION
 
 |**Section**					| **Field**					| **Type**			| **Description**
