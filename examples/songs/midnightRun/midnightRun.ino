@@ -18,7 +18,7 @@ void setup() {
   arduboy.audio.on();
   // Initializes ATMSynth and samplerate
   // Begin playback of song.
-  ATM.play(italoNight);
+  ATM.play(midnightRun);
 }
 
 void loop() {

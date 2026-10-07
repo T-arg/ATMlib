@@ -3,9 +3,6 @@
 
 #define Song const uint8_t PROGMEM
 
-#ifndef NEWSONG_H
-#define NEWSONG_H
-
 // ---------------------------------------------------------------------------
 //  "Italo Night" - 8 bars, A minor, ~127.5 BPM, ~15.06 s, loops seamlessly
 //
@@ -368,7 +365,7 @@ Song italoNight[] = {     // total song bytes = 558
   ATM_RETURN,
 
   //"Track 24" drums: CH3 NOISE: tempo + loop points + 8 bars of drums
-  ATM_SET_TEMPO(17),
+  ATM_SET_TEMPO(35),
   ATM_GOTO_ADV(1, 10, 18, 24),   // loop point per channel
   ATM_REPEAT(2, 28),   // 3x drum_bar
   ATM_GOTO(31),   // -> drum_bar_fill
@@ -473,8 +470,5 @@ Song italoNight[] = {     // total song bytes = 558
   ATM_RETURN,
 
 };
-
-#endif
-
 
 #endif
