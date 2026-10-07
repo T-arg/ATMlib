@@ -1,5 +1,5 @@
-#ifndef SYNTH_H
-#define SYNTH_H
+#ifndef SONG_H
+#define SONG_H
 
 // ---------------------------------------------------------------------------
 //  "Midnight Run" — Synthwave 80s for Arduboy / ATMlib
