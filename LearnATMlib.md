@@ -15,7 +15,8 @@
 3. **Write songs as commands**, e.g. `ATM_NOTE_A4, ATM_DELAY(8), ATM_VOL(38)`. Never write track bodies as raw hex. The small header (track count, track addresses, channel entry tracks) is hex, exactly as in the reference `song.h`.
 4. **Byte budget means the whole array**, including the header. "Max 250 bytes" = `sizeof(song) <= 250`.
 5. **Loops must be gapless.** The user hears a one-tick error at the loop point (30 ms). See section 6.
-6. **Quality bar:** Italo Night, Midnight Run and Quest Theme were "really good / perfect". Pixel Chase was rejected: too plain, and actually broken (section 12).
+6. **Tempo is the user's to set when they say so.** If they set it from the sketch (`ATM.setTempo()`), leave `ATM_SET_TEMPO` out of the song (`quest.h` has none now: without it the song plays at ATMlib's default of 25, not 34).
+7. **Quality bar:** Italo Night, Midnight Run and Quest Theme were "really good / perfect". Pixel Chase was rejected: too plain, and actually broken (section 12).
 
 ### 0.2 Starter prompt for a fresh session
 
@@ -86,8 +87,8 @@ Values are from `ATMcmds.h` (the source of truth; the README table agrees except
 | Macro | Bytes | Meaning |
 |---|---|---|
 | `ATM_VOL(v)` | `0x40, v` | Set volume 0..63. Also stores v as the volume re-applied at every later note-on (see 4.2). |
-| `ATM_SL_VOL(s)` | `0x41, s` | Add signed s to the volume **every tick** (clamped 0..63). A negative value gives a decay after each note. |
-| `ATM_SL_VOL_ADV(s, t)` | `0x42, s, t` | Slide s every t+1 ticks. **Caution:** with this form the volume is *not* re-applied at note-on (4.2). |
+| `ATM_SL_VOL(s)` | `0x41, s` | Add signed s to the volume **every tick** (clamped at 0 only, see 4.9: a positive slide is NOT clamped at 63). A negative value gives a decay after each note. |
+| `ATM_SL_VOL_ADV(s, t)` | `0x42, s, t` | Slide s every t+1 ticks (`t` is the low 6 bits; bit 7 = no clamping at all). Used for long fades (4.9). **Caution:** with this form the volume is *not* re-applied at note-on (4.2). |
 | `ATM_SL_VOL_OFF` | `0x43` | Stop the volume slide. |
 | `ATM_SL_FRQ(s)` / `_ADV` / `_OFF` | `0x44` / `0x45` / `0x46` | Frequency slide (pitch drop for kicks: `-127`). Also disables note-on volume re-apply. |
 | `ATM_ARP(a, y)` | `0x47, a, y` | Arpeggio, see 4.6. |
@@ -96,12 +97,12 @@ Values are from `ATMcmds.h` (the source of truth; the README table agrees except
 | `ATM_ADD_TRA(d)` | `0x4B, d` | Add signed d to the transposition. |
 | `ATM_SET_TRA(v)` | `0x4C, v` | Set the transposition to signed v (semitones). |
 | `ATM_TRA_OFF` | `0x4D` | Transposition = 0. |
-| `ATM_TREM(depth, rate)` / `_OFF` | `0x4E, d, r` / `0x4F` | Tremolo. Cannot be combined with vibrato. |
-| `ATM_VIB(depth, rate)` / `_OFF` | `0x50, d, r` / `0x51` | Vibrato. |
+| `ATM_TREM(depth, rate)` / `_OFF` | `0x4E, d, r` / `0x4F` | Tremolo: volume moves by `depth` every tick, reversing every rate+1 ticks (triangle). Shares state with vibrato, so one of the two per channel. |
+| `ATM_VIB(depth, rate)` / `_OFF` | `0x50, d, r` / `0x51` | Vibrato: frequency (Hz) moves by `depth` every tick, reversing every rate+1 ticks. `VIB(3,3)` is about +-24 cents at 880 Hz. |
 | `ATM_GLIS(x)` / `_OFF` | `0x52, x` / `0x53` | Glissando; bit 7 = direction (1 = down), low 7 bits = ticks per semitone step. |
-| `ATM_CUT(n)` / `_OFF` | `0x54, n` / `0x55` | Note cut after n ticks. Shares state with the arpeggio, so not both on one channel. |
+| `ATM_CUT(n)` / `_OFF` | `0x54, n` / `0x55` | Staccato **gate**: sound for n+1 ticks, silence for n+1 ticks, repeating. Use `0x20+n` so every note-on restarts it. Shares state with the arpeggio (not both on one channel) and **only works with transposition = 0** (4.9). |
 | `ATM_CUE(v)` | `0x57, v` | Hands a byte to the sketch (`ATM.check()`). |
-| `ATM_ADD_TEMPO(v)` | `0x9C, v` | Add to the tempo. |
+| `ATM_ADD_TEMPO(v)` | `0x9C, v` | Add to the tempo (the tempo is a byte, so `(uint8_t)-1` subtracts 1). Ritardando: one `ADD_TEMPO(-1)` per beat. |
 | `ATM_SET_TEMPO(v)` | `0x9D, v` | Set the tempo, 0..127, default 25. |
 | `ATM_GOTO_ADV(a,b,c,d)` | `0x9E, a,b,c,d` | Set the **loop-restart track** for CH0..CH3 (4.4). Executed from any channel; applies to all four. |
 | `ATM_WAVEFORM(t)` | **do not use** | Defined in the header (`0x56`) but the playroutine has no handler for it, so the parameter byte would be run as a command. Waveforms are compile-time (`ATMconfig.h`). |
@@ -186,6 +187,22 @@ CH3 is noise; drums are made purely with `VOL` + `SL_VOL` + `DELAY` (no notes ne
 * `ATM_LONG_DELAY` macro is wrong; `ATM_WAVEFORM` is unhandled (section 3).
 * The README says note 1 is "C1"; the header and table use **C2 = 1**.
 * README says tempo values are 0..127 and "the higher the tempo, the more CPU".
+
+### 4.9 Effect details verified in `ATMlibimpl.h` (used by Cutlass Cove)
+
+Per tick, per channel, the order is: noise retrigger, glissando, volume/frequency slide, arpeggio/cut, tremolo/vibrato, then the command stream.
+
+* **One slide slot per channel.** `SL_VOL`, `SL_VOL_ADV`, `SL_FRQ`, `SL_FRQ_ADV` share a single slide. Starting one replaces the other. Cannon boom on the bass: `ATM_SL_FRQ(-24)` for 16 ticks, then `ATM_SL_VOL(-3)` both ends the pitch slide and starts the volume decay.
+* **Positive volume slides are not clamped at 63** (a dangling `else` in the library: only freq is clamped above). `vol` is a byte, so a fade-in must be **stopped on purpose** (`ATM_SL_VOL_OFF`, or a new `ATM_SL_VOL`) before it reaches 63. Negative slides clamp at 0. Same for tremolo.
+* **Fades:** `ATM_VOL(0), ATM_SL_VOL_ADV(1, 8)` adds +1 every 9 ticks and, because the config byte is non-zero, notes do not reset the volume, so the fade runs straight through note-ons. Fade-out: `ATM_SL_VOL_ADV((uint8_t)-1, 5)` from a starting `ATM_VOL`. `SL_VOL_ADV` and `SL_FRQ` set the config byte, so afterwards use plain `ATM_SL_VOL(x)` (which sets config 0) before expecting note-on volume resets again.
+* **Frequency slide** `SL_FRQ(s)` moves the frequency by s **Hz per tick** (table of `extras/frequencyToTone.md`); clamped 0..9397.
+* **Tremolo** is a triangle LFO on the volume: the first half goes *down*. `ATM_TREM(1, 15)` = sea swell with a 32-tick period. `ATM_TREM(6, 0)` on a rising volume (`VOL(10), SL_VOL(2)`) = a snare roll in 8 bytes; end it with `ATM_TREM_OFF`.
+* **Vibrato** is the same on the frequency. A new note restarts the frequency, the LFO phase carries on, so the vibrato stays bounded.
+* **Glissando** `ATM_GLIS(x)`: moves the note by one semitone every `(x & 0x7F)+1` ticks, upward, or downward when bit 7 is set (`0x82` = down, 3 ticks per step); stops at 1 and 63. End it with `ATM_GLIS_OFF`.
+* **Note cut is a repeating gate:** after the note-on it sounds for n+1 ticks, is silent for n+1 ticks, then sounds again. With `ATM_CUT(0x23)` and 8-tick notes you get 4 ticks on, 4 off, exactly staccato. Notes longer than 2*(n+1) ticks come back to life, so keep the notes at one length. **With a non-zero transposition the "silence" plays note number = transposition** (the table is read at index 0+tra, negative = garbage), so use `CUT` only where transposition is 0.
+* **Noise retrigger** `ATM_NOISE(x)` (x = entry point * 4 + speed; `0x14` = point 5, speed 0) reseeds the LFSR every tick = low rumble (thunder). It shares `reCount` with the volume buffer, so use it on CH3 where no notes are played, and call `ATM_NOISE_OFF` afterwards.
+* **Cue:** `ATM_CUE(v)` stores one byte; `ATM.check()` returns it and clears it, `ATM.check(id)` tests without clearing. A cue is overwritten by the next one if the sketch does not poll often enough. Put cues on a track that is already part of the beat sequence (2 bytes per marker).
+* **Tempo changes** are global (any channel); put them on CH3 so the tick domain stays easy to read. Ticks are all that other channels count, so a tempo change never breaks the alignment.
 
 ---
 
@@ -297,7 +314,7 @@ Beat A (beats 1, 3) = kick(4) + closed hat(4) + open hat(8). Beat B (beats 2, 4)
 
 ## 9. Tooling
 
-Appendix A is `atmsim.py`: a Python model of the playroutine's control flow (call stack, track-0 behaviour, delays, REPEAT counters, transposition, volume retrigger, arp setup, GOTO_ADV restart rule). It does **not** render audio. It raises an exception on effects it does not model (tremolo, vibrato, glissando, cut, frequency slides, long delay); extend it before using those, or the verification means nothing.
+Appendix A is `atmsim.py`: a Python model of the playroutine's control flow (call stack, track-0 behaviour, delays, REPEAT counters, transposition, volume retrigger, arp setup, GOTO_ADV restart rule). It does **not** render audio. Since Cutlass Cove it also models the per-tick state: volume/frequency slides (with the missing upper clamp), tremolo, vibrato, glissando, arpeggio and the note-cut gate (and raises if cut is used with transposition), tempo commands, cues. After `simulate()`, `atmsim.TIMELINE[tick]` holds `(volume, frequency_hz)` for each of the four channels, which is how fades, the cut gate and slides are checked. It still raises on `ATM_WAVEFORM` and the long delay.
 
 Appendix B is `gen_quest.py`: the full generator of Quest Theme. It contains the pieces to reuse: command constructors, named tracks, assembler (offsets, track numbers), verifier, header-file writer.
 
@@ -398,28 +415,36 @@ Compile-time options (waveforms, effects, octaves) live in `ATMconfig.h`; copy `
 | File | Array | Style | Size | Notes |
 |---|---|---|---|---|
 | `newsong.h` | `italoNight` | Italo disco, A minor, 8 bars | 558 B | Original, written at emulator tempo 17 (use 34). Kick + arp stabs on CH1, transposed SAW bass, noise drums with fills. Chords Am F C G Am F G E. |
-| `newsong2.h` | `escaperDroid` | uptempo space, D major, 8 bars | 544 B | Same skeleton as Italo Night. ARP `0x47` / `0x37`. |
+| `newsong2.h` | `escaperDroid` | uptempo space, D major, 8 bars | 546 B | Same skeleton as Italo Night. ARP `0x47` / `0x37`. `ATM_CUE(1)` once per beat (inside the kick track, 2 bytes) for the game's dancing droid sprite. |
 | `synth.h` | `midnightRun` | 80s synthwave, A minor, 96 bars (~3 min) | 715 B | One-shot, fade in and out, no `GOTO_ADV`. |
-| `quest.h` | `questTheme` | in-game chiptune, A minor, 16 bars | 247 B | Tempo 34. Arpeggio chords, transposed lead and bass, key lift and Em pivot, gapless loop. Best reference for tight budgets. |
+| `quest.h` | `questTheme` | in-game chiptune, A minor, 16 bars | 245 B | **No tempo command** (the sketch sets it; intended value 34). Arpeggio chords, transposed lead and bass, key lift and Em pivot, gapless loop. Best reference for tight budgets. |
+| `gameover.h` | `gameOver` | one-shot game over jingle, A minor, 5 bars | 106 B | Tempo 20. Andalusian descent Am-G-F-E-Am, one lead phrase transposed down with ADD_TRA, arp chords, bass on the same transposition, noise toll per bar. No GOTO_ADV, so it ends by itself. Reference for small one-shots (the user's own `youDied` does the same in 64 B). |
+| `cutlass.h` | `cutlassCove` | original tropical-pirate showcase, C major / A minor, 32 bars (~75 s) | 839 B | One-shot, tempo 30 (+6 in B, ritardando in the outro), fades, cues 1..6. Uses nearly every command: Appendix D. **Not** a copy of any existing song (the Monkey Island theme is a copyrighted composition and is not reproduced). |
 | `pixelchase.h` | `pixelChase` | NES-like | 181 B | **Broken (track-0 bug), rejected. Do not use.** |
 
 ---
 
-## Appendix A: `atmsim.py` (control-flow simulator)
+## Appendix A: `atmsim.py` (playroutine simulator: control flow and per-tick state)
 
 ```python
 #!/usr/bin/env python3
 """
-Control-flow simulator of ATMlib's playroutine (ATMlibimpl.h), tick domain only.
+Simulator of ATMlib's playroutine (ATMlibimpl.h) - control flow AND per-tick channel state.
 
-Models exactly: per-channel call stack (7 deep) incl. the quirk that a channel's
-"current track" starts at 0 whatever its entry track is, REPEAT counters, delay
-semantics, transposition (applied at note-on), volume slide + vol retrigger rule,
-arpeggio setup, GOTO_ADV loop points and the all-channels-stopped restart rule
-(checked after each channel is processed, exactly like the C code).
+Models exactly (see ATM_playroutine in ATMlibimpl.h):
+  * per-channel call stack (7 deep) incl. the quirk that a channel's "current track" starts at 0
+  * REPEAT counters, delays, GOTO_ADV loop points, the all-channels-stopped restart rule
+    (checked after each channel, like the C code), tempo commands
+  * per-tick effect order: noise retrigger, glissando, volume/frequency slide, arpeggio/note-cut,
+    tremolo/vibrato, then the command stream
+  * the real quirks: volume is NOT clamped above 63 by slides or tremolo (only freq is clamped),
+    vol/freq values are bytes / int16 as in the C structs, volFreConfig != 0 disables the
+    "reset volume at note-on" rule, ATM_CUT behaves as a repeating gate (on T+1 ticks, off T+1 ticks)
+    and gives note `transposition` instead of silence when transposed.
+After simulate():   atmsim.TIMELINE[tick] = [(vol, freq_hz) x4]  (state after the tick was processed)
 """
-
 NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+TIMELINE = []
 
 
 def note_name(n):
@@ -427,6 +452,17 @@ def note_name(n):
         return '--'
     n0 = n - 1
     return f"{NOTE_NAMES[n0 % 12]}{2 + n0 // 12}"
+
+
+def freq_hz(note):
+    """frequency table of the library docs (nr 10 = 440 Hz); 0 = off"""
+    if note <= 0 or note > 63:
+        return 0
+    return int(round(440 * 2 ** ((note - 10) / 12)))
+
+
+def s8(v):
+    return v - 256 if v > 127 else v
 
 
 class Ch:
@@ -439,11 +475,22 @@ class Ch:
         self.counter = 0
         self.track = 0
         self.vol = 0
+        self.freq = 0
         self.reCount = 0
-        self.slide = 0
-        self.slideCfg = 0
-        self.arp = None          # (notes, timing)
+        self.reConfig = 0
+        self.slide = 0           # volFreSlide (signed char)
+        self.slideCfg = 0        # volFreConfig
+        self.slideCount = 0
+        self.arpNotes = 0
+        self.arpTiming = 0
+        self.arpCount = 0
+        self.arp = None          # kept for the event log (notes, timing)
         self.tra = 0
+        self.treD = 0
+        self.treC = 0
+        self.treN = 0
+        self.glis = 0
+        self.glisCount = 0
         self.stopped = False
 
 
@@ -456,23 +503,98 @@ def parse(song):
     return ntr, offs, entries, base
 
 
+ARGS = {0: 1, 1: 1, 2: 2, 3: 0, 4: 1, 5: 2, 6: 0, 7: 2, 8: 0, 9: 1, 10: 0, 11: 1, 12: 1, 13: 0,
+        14: 2, 15: 0, 16: 2, 17: 0, 18: 1, 19: 0, 20: 1, 21: 0, 22: 1, 23: 1}
+
+
 def simulate(song, max_ticks, trace=True):
+    global TIMELINE
+    TIMELINE = []
     ntr, offs, entries, base = parse(song)
     ch = [Ch() for _ in range(4)]
     for n in range(4):
         ch[n].ptr = base + offs[entries[n]]
-    events = []        # (tick, chan, kind, value...)
-    restarts = []
-    stops = []
+    events = []        # (tick, chan, 'note', note+tra, vol, arp, tra) | (tick, chan, 'cue', value)
+    restarts, stops = [], []
     maxstack = 0
     tempo = 25
+    tempo_log = []
     tick = 0
+    warn = []
     while tick < max_ticks:
         for n in range(4):
             c = ch[n]
-            # vol slide (applied before commands, like the C code)
+            # ---- noise retrigger (shares reCount with the volume buffer)
+            if c.reConfig:
+                if c.reCount >= (c.reConfig & 3):
+                    c.reCount = 0
+                else:
+                    c.reCount += 1
+            # ---- glissando
+            if c.glis:
+                cfg = c.glis & 0xFF
+                if c.glisCount >= (cfg & 0x7F):
+                    c.note += -1 if cfg & 0x80 else 1
+                    c.note = max(1, min(63, c.note))
+                    c.freq = freq_hz(c.note)
+                    c.glisCount = 0
+                else:
+                    c.glisCount += 1
+            # ---- volume / frequency slide
             if c.slide:
-                pass  # volume trajectory not needed for control-flow checks
+                if not c.slideCount:
+                    isf = bool(c.slideCfg & 0x40)
+                    vf = (c.freq if isf else c.vol) + c.slide
+                    if not (c.slideCfg & 0x80):
+                        if vf < 0:
+                            vf = 0
+                        elif isf and vf > 9397:
+                            vf = 9397
+                    if isf:
+                        c.freq = vf
+                    else:
+                        c.vol = vf & 0xFF
+                if c.slideCount >= (c.slideCfg & 0x3F):
+                    c.slideCount = 0
+                else:
+                    c.slideCount += 1
+            # ---- arpeggio / note cut
+            if c.arpNotes and c.note:
+                if (c.arpCount & 0x1F) < (c.arpTiming & 0x1F):
+                    c.arpCount += 1
+                else:
+                    if (c.arpCount & 0xE0) == 0x00:
+                        c.arpCount = 0x20
+                    elif (c.arpCount & 0xE0) == 0x20 and not (c.arpTiming & 0x40) and c.arpNotes != 0xFF:
+                        c.arpCount = 0x40
+                    else:
+                        c.arpCount = 0x00
+                    an = c.note
+                    if (c.arpCount & 0xE0) != 0x00:
+                        an = 0 if c.arpNotes == 0xFF else an + (c.arpNotes >> 4)
+                    if (c.arpCount & 0xE0) == 0x40:
+                        an += (c.arpNotes & 0x0F)
+                    if c.arpNotes == 0xFF and an == 0 and c.tra != 0:
+                        raise Exception('ATM_CUT with transposition != 0 plays note %d instead of silence' % c.tra)
+                    c.freq = freq_hz(an + c.tra)
+            # ---- tremolo / vibrato
+            if c.treD:
+                isf = bool(c.treC & 0x40)
+                vt = c.freq if isf else c.vol
+                vt = vt + c.treD if (c.treN & 0x80) else vt - c.treD
+                if vt < 0:
+                    vt = 0
+                elif isf and vt > 9397:
+                    vt = 9397
+                if isf:
+                    c.freq = vt
+                else:
+                    c.vol = vt & 0xFF
+                if (c.treN & 0x1F) < (c.treC & 0x1F):
+                    c.treN += 1
+                else:
+                    c.treN = 0 if (c.treN & 0x80) else 0x80
+            # ---- commands
             if c.delay:
                 if c.delay != 0xFFFF:
                     c.delay -= 1
@@ -483,32 +605,63 @@ def simulate(song, max_ticks, trace=True):
                         c.note = cmd
                         if cmd:
                             c.note = (cmd + c.tra) & 0xFF
+                        c.freq = freq_hz(c.note)
                         if c.slideCfg == 0:
                             c.vol = c.reCount
+                        if c.arpTiming & 0x20:
+                            c.arpCount = 0
                         events.append((tick, n, 'note', c.note, c.vol, c.arp, c.tra))
                     elif cmd < 160:
                         fx = cmd - 64
                         if fx == 0:
                             c.vol = song[c.ptr]; c.ptr += 1
                             c.reCount = c.vol
-                        elif fx == 1:
-                            v = song[c.ptr]; c.ptr += 1
-                            c.slide = v - 256 if v > 127 else v
-                            c.slideCfg = 0
+                        elif fx in (1, 4):
+                            c.slide = s8(song[c.ptr]); c.ptr += 1
+                            c.slideCfg = 0 if fx == 1 else 0x40
+                        elif fx in (2, 5):
+                            c.slide = s8(song[c.ptr]); c.slideCfg = song[c.ptr + 1]; c.ptr += 2
+                            if fx == 5:
+                                c.slideCfg |= 0x40
+                        elif fx in (3, 6):
+                            c.slide = 0
                         elif fx == 7:
-                            c.arp = (song[c.ptr], song[c.ptr + 1]); c.ptr += 2
-                        elif fx == 8:
-                            c.arp = None
+                            c.arpNotes = song[c.ptr]; c.arpTiming = song[c.ptr + 1]
+                            c.arp = (c.arpNotes, c.arpTiming); c.ptr += 2
+                        elif fx in (8, 21):
+                            c.arpNotes = 0; c.arp = None
+                        elif fx == 9:
+                            c.reConfig = song[c.ptr]; c.ptr += 1
+                        elif fx == 10:
+                            c.reConfig = 0
                         elif fx == 11:
-                            v = song[c.ptr]; c.ptr += 1
-                            c.tra += (v - 256 if v > 127 else v)
+                            c.tra = s8((c.tra + s8(song[c.ptr])) & 0xFF); c.ptr += 1
                         elif fx == 12:
-                            v = song[c.ptr]; c.ptr += 1
-                            c.tra = (v - 256 if v > 127 else v)
+                            c.tra = s8(song[c.ptr]); c.ptr += 1
                         elif fx == 13:
                             c.tra = 0
+                        elif fx in (14, 16):
+                            c.treD = song[c.ptr]; c.treC = song[c.ptr + 1] + (0 if fx == 14 else 0x40)
+                            c.ptr += 2
+                        elif fx in (15, 17):
+                            c.treD = 0
+                        elif fx == 18:
+                            c.glis = song[c.ptr]; c.ptr += 1
+                        elif fx == 19:
+                            c.glis = 0
+                        elif fx == 20:
+                            c.arpNotes = 0xFF; c.arpTiming = song[c.ptr]; c.ptr += 1
+                            c.arp = ('cut', c.arpTiming)
+                        elif fx == 22:
+                            raise Exception("ATM_WAVEFORM is unhandled by the playroutine - do not use")
+                        elif fx == 23:
+                            events.append((tick, n, 'cue', song[c.ptr])); c.ptr += 1
+                        elif cmd == 156:           # ADD tempo (92+64)
+                            tempo = (tempo + song[c.ptr]) & 0xFF; c.ptr += 1
+                            tempo_log.append((tick, tempo))
                         elif cmd == 157:           # SET tempo (93+64)
                             tempo = song[c.ptr]; c.ptr += 1
+                            tempo_log.append((tick, tempo))
                         elif cmd == 158:           # GOTO_ADV
                             for i in range(4):
                                 ch[i].repeatPoint = song[c.ptr]; c.ptr += 1
@@ -559,8 +712,12 @@ def simulate(song, max_ticks, trace=True):
                         ch[k].delay = 0
                         ch[k].stopped = False
                 else:
+                    TIMELINE.append([(x.vol, x.freq) for x in ch])
+                    simulate.tempo_log = tempo_log
                     return events, restarts, stops, maxstack, tempo
+        TIMELINE.append([(x.vol, x.freq) for x in ch])
         tick += 1
+    simulate.tempo_log = tempo_log
     return events, restarts, stops, maxstack, tempo
 ```
 
@@ -865,4 +1022,398 @@ int main(){ fwrite(questTheme, 1, sizeof(questTheme), stdout); return 0; }
 g++ -std=c++11 -Wall -Wextra -I/path/to/ATMlib/src chk.cpp -o chk
 ./chk > from_header.bin
 cmp from_header.bin quest.bin && echo IDENTICAL     # quest.bin is written by the generator
+```
+
+---
+
+## Appendix D: `gen_cutlass.py` (showcase song: every effect, fades, cues, tempo changes)
+
+Reference for the commands that Quest Theme does not use. Run it in the folder that contains `atmsim.py`; it writes `cutlass.bin` and `cutlass_text.h`. Verify with the checks in section 9 plus: `atmsim.TIMELINE` for the fades, the cut gate, the cannon slide and the vibrato range, and the `simulate.tempo_log` list for the tempo changes.
+
+```python
+#!/usr/bin/env python3
+"""
+"Cutlass Cove" - original tropical-pirate showcase for ATMlib (one-shot, 32 bars, ~73 s).
+
+  INTRO  4 bars  fade-in: sea (tremolo noise), seagull (glissando), pad (arp), bass swell
+  A      8 bars  sunny calypso/reggae: steel-drum lead, off-beat skank, bouncy bass, one-drop
+  B      8 bars  storm / swashbuckle: tempo up, thunder (noise retrigger), cannon (freq slide),
+                 staccato lead (note cut), vibrato lead, driving drums, tremolo snare rolls
+  A'     8 bars  return, lifted a whole step (C -> D major), tempo back
+  OUTRO  4 bars  ritardando (ADD_TEMPO), fade-out on all channels, final cue
+
+Track 0 is only CH3's entry point and is never called (ATMlib starts every channel at 'track 0').
+"""
+import sys
+sys.path.insert(0, '/home/claude/work')
+import atmsim
+from atmsim import simulate, note_name
+
+SONG_VAR = 'cutlassCove'
+TEMPO = 30            # doubled, as always  (30 -> ~112 BPM in the emulator's scale)
+
+_NAMES = ['C', 'C_', 'D', 'D_', 'E', 'F', 'F_', 'G', 'G_', 'A', 'A_', 'B']
+_SHARP = {'C': 0, 'C#': 1, 'D': 2, 'D#': 3, 'E': 4, 'F': 5, 'F#': 6, 'G': 7, 'G#': 8,
+          'A': 9, 'A#': 10, 'B': 11}
+
+
+def nnum(name):
+    if name[1] == '#':
+        pc, octv = name[:2], int(name[2:])
+    else:
+        pc, octv = name[0], int(name[1:])
+    return (octv - 2) * 12 + _SHARP[pc] + 1
+
+
+def NOTE(name):
+    n = nnum(name)
+    o = 2 + (n - 1) // 12
+    pc = _NAMES[(n - 1) % 12]
+    return (f'ATM_NOTE_{pc[0]}{o}{"_" if len(pc) > 1 else ""}', [n])
+
+
+def DELAY(d):
+    assert 1 <= d <= 64, d
+    return (f'ATM_DELAY({d})', [0x9F + d])
+
+
+def _s(v):
+    return f'(uint8_t){v}' if v < 0 else str(v)
+
+
+def VOL(v):         return (f'ATM_VOL({v})', [0x40, v])
+def SLV(v):         return (f'ATM_SL_VOL({_s(v)})', [0x41, v & 0xFF])
+def SLVADV(a, t):   return (f'ATM_SL_VOL_ADV({_s(a)}, {t})', [0x42, a & 0xFF, t])
+SLVOFF = ('ATM_SL_VOL_OFF', [0x43])
+def SLFRQ(v):       return (f'ATM_SL_FRQ({_s(v)})', [0x44, v & 0xFF])
+def ARP(a, t):      return (f'ATM_ARP(0x{a:02X}, 0x{t:02X})', [0x47, a, t])
+def NOISE(v):       return (f'ATM_NOISE(0x{v:02X})', [0x49, v])
+NOISEOFF = ('ATM_NOISE_OFF', [0x4A])
+def ADDTRA(v):      return (f'ATM_ADD_TRA({_s(v)})', [0x4B, v & 0xFF])
+def SETTRA(v):      return (f'ATM_SET_TRA({_s(v)})', [0x4C, v & 0xFF])
+def TREM(d, r):     return (f'ATM_TREM({d}, {r})', [0x4E, d, r])
+TREMOFF = ('ATM_TREM_OFF', [0x4F])
+def VIB(d, r):      return (f'ATM_VIB({d}, {r})', [0x50, d, r])
+VIBOFF = ('ATM_VIB_OFF', [0x51])
+def GLIS(v):        return (f'ATM_GLIS(0x{v:02X})', [0x52, v])
+GLISOFF = ('ATM_GLIS_OFF', [0x53])
+def CUT(v):         return (f'ATM_CUT(0x{v:02X})', [0x54, v])
+CUTOFF = ('ATM_CUT_OFF', [0x55])
+def CUE(v):         return (f'ATM_CUE({v})', [0x57, v])
+def ADDTEMPO(v):    return (f'ATM_ADD_TEMPO({_s(v)})', [0x9C, v & 0xFF])
+def TEMPOc(v):      return (f'ATM_SET_TEMPO({v})', [0x9D, v])
+def STOP():         return ('ATM_STOP_CHAN', [0x9F])
+def RET():          return ('ATM_RETURN', [0xFE])
+def GOTO(t):        return ('GOTO', t)
+def REPEAT(r, t):   return ('REPEAT', r, t)
+
+
+TR, ORDER = {}, []
+
+
+def track(name, cmds):
+    TR[name] = cmds
+    ORDER.append(name)
+
+
+def n_(name, d):
+    return [NOTE(name), DELAY(d)]
+
+
+# =============================================================================== CH3 drums / sea
+# (track 0 = CH3 entry)
+track('drums', [
+    TEMPOc(TEMPO),
+    CUE(1),                                                  # intro
+    VOL(4), SLVADV(1, 7), TREM(1, 15),                       # sea: fade-in + slow tremolo swell
+    DELAY(64), DELAY(32), SLVOFF,                            # stop the fade at ~tick 96 (slide does NOT clamp at 63!)
+    DELAY(32), DELAY(64), DELAY(48),
+    GOTO('roll'),                                            # tremolo snare roll into the A section
+    CUE(2),                                                  # A
+    REPEAT(1, 'dr_a4'),
+    CUE(3),                                                  # B
+    ADDTEMPO(6),                                             # tempo up
+    GOTO('thunder'), GOTO('half_b'),                         # bar 1: thunder + half a bar of drums
+    REPEAT(1, 'bar_b'),                                      # bars 2-3
+    GOTO('fill_b'),                                          # bar 4
+    GOTO('dr_b4'),                                           # bars 5-8
+    CUE(4),                                                  # A'
+    TEMPOc(TEMPO),
+    REPEAT(1, 'dr_a4'),
+    CUE(5),                                                  # outro
+    GOTO('bar_a'),
+    VOL(20), SLVADV(-1, 5), TREM(1, 15),                     # sea again, fading out
+    REPEAT(11, 'slow'),                                      # 12 beats, tempo -1 per beat
+    CUE(6),                                                  # the end
+    STOP(),
+])
+track('hat',   [VOL(14), SLV(-7), DELAY(8), RET()])
+track('ohat',  [VOL(26), SLV(-3), DELAY(8), RET()])
+track('thump', [VOL(46), SLV(-6), DELAY(8), RET()])
+track('kick',  [VOL(48), SLV(-12), DELAY(8), RET()])
+track('snr',   [VOL(44), SLV(-5), DELAY(8), RET()])
+# tremolo (depth 6, rate 0 = flips every tick) on a rising volume = snare roll in 8 bytes
+track('roll',  [VOL(10), SLV(2), TREM(6, 0), DELAY(16), TREMOFF, RET()])
+# noise retrigger: reseeds the LFSR every tick -> low rumble
+track('thunder', [NOISE(0x14), VOL(36), SLV(-1), DELAY(32), NOISEOFF, RET()])
+track('bar_a',  [REPEAT(3, 'hat'), GOTO('thump'), REPEAT(1, 'hat'), GOTO('ohat'), RET()])
+track('fill_a', [REPEAT(3, 'hat'), GOTO('thump'), GOTO('hat'), GOTO('roll'), RET()])
+track('dr_a4',  [REPEAT(2, 'bar_a'), GOTO('fill_a'), RET()])
+track('half_b', [GOTO('kick'), GOTO('hat'), GOTO('snr'), GOTO('hat'), RET()])
+track('bar_b',  [REPEAT(1, 'half_b'), RET()])
+track('fill_b', [GOTO('half_b'), GOTO('kick'), GOTO('hat'), GOTO('roll'), RET()])
+track('dr_b4',  [REPEAT(2, 'bar_b'), GOTO('fill_b'), RET()])
+track('slow',   [ADDTEMPO(-1), DELAY(16), RET()])
+
+# =============================================================================== CH0 lead
+track('lead', [
+    # ---- INTRO (4 bars): bar 1 silent, bar 2 seagulls, bars 3-4 a pan-flute foreshadowing
+    DELAY(64),
+    GOTO('gull'),
+    VOL(30), SLV(-1), VIB(3, 3),
+    SETTRA(-4), GOTO('sing'),                 # F
+    ADDTRA(2), GOTO('sing'),                  # G
+    VIBOFF,
+    # ---- A (8 bars): steel-drum lead, riff transposed per chord
+    VOL(40), SLV(-1),
+    SETTRA(0), REPEAT(1, 'phr_a'),
+    # ---- B (8 bars): 4 bars of staccato pedal riff (note cut), 4 bars vibrato melody
+    VOL(36), SLV(-1),
+    SETTRA(0), CUT(0x23), REPEAT(3, 'riff_p'), CUTOFF,
+    VIB(3, 3),
+    SETTRA(5), GOTO('sing'),                  # Dm
+    ADDTRA(-5), GOTO('sing'),                 # Am
+    ADDTRA(-4), GOTO('sing'),                 # F
+    ADDTRA(2), GOTO('sing'),                  # G7
+    VIBOFF,
+    # ---- A' (8 bars): same, a whole step higher
+    VOL(40), SLV(-1),
+    SETTRA(2), REPEAT(1, 'phr_a'),
+    # ---- OUTRO (4 bars): fading vibrato melody
+    VOL(34), SLVADV(-1, 5), VIB(3, 3),
+    SETTRA(5), GOTO('sing'),                  # D
+    ADDTRA(-7), GOTO('sing'),                 # G
+    ADDTRA(7), GOTO('sing'),                  # D
+    NOTE('E5'), DELAY(64),                    # held 5th of D
+    STOP(),
+])
+track('gull', [
+    VOL(24), SLV(-1),
+    NOTE('G6'), GLIS(0x82), DELAY(18), GLISOFF, DELAY(14),
+    NOTE('E6'), GLIS(0x82), DELAY(12), GLISOFF, DELAY(20),
+    RET(),
+])
+track('sing', n_('E5', 32) + n_('A5', 16) + n_('B5', 16) + [RET()])
+track('riff_a', (n_('E5', 12) + n_('G5', 4) + n_('A5', 8) + n_('G5', 8) +
+                 n_('E5', 12) + n_('D5', 4) + n_('C5', 8) + n_('D5', 8) + [RET()]))
+track('riff_b', (n_('E5', 12) + n_('G5', 4) + n_('A5', 8) + n_('G5', 8) +
+                 n_('E5', 8) + n_('D5', 8) + n_('C5', 16) + [RET()]))
+track('phr_a', [GOTO('riff_a'), ADDTRA(5), GOTO('riff_a'), ADDTRA(2), GOTO('riff_a'),
+                ADDTRA(-7), GOTO('riff_b'), RET()])
+track('riff_p', (n_('A5', 8) + n_('A5', 8) + n_('E5', 8) + n_('A5', 8) +
+                 n_('A5', 8) + n_('E5', 8) + n_('A5', 8) + n_('B5', 8) + [RET()]))
+
+# =============================================================================== CH1 chords
+track('chords', [
+    # ---- INTRO: slow arpeggio pad, fade-in (positive slide, ends at ~28)
+    VOL(0), SLVADV(1, 8), ARP(0x43, 0x23),
+    NOTE('C4'), DELAY(64), NOTE('C4'), DELAY(64), NOTE('F4'), DELAY(64), NOTE('G4'), DELAY(64),
+    # ---- A: reggae skank on beats 2 and 4
+    VOL(30), SLV(-6), ARP(0x43, 0x20),
+    GOTO('sk_a1'), GOTO('sk_a2'),
+    # ---- B: arpeggio stabs every beat
+    VOL(28), SLV(-1),
+    GOTO('st_b1'), GOTO('st_b2'),
+    # ---- A' (lifted)
+    VOL(30), SLV(-6), ARP(0x43, 0x20),
+    GOTO('sk_a1b'), GOTO('sk_a2b'),
+    # ---- OUTRO: slow pad again, fading
+    VOL(26), SLVADV(-1, 6), ARP(0x43, 0x23),
+    NOTE('D4'), DELAY(64), NOTE('G4'), DELAY(64), NOTE('D4'), DELAY(64), NOTE('A4'), DELAY(64),
+    STOP(),
+])
+
+
+def skank(root):
+    return [DELAY(16), NOTE(root), DELAY(32), NOTE(root), DELAY(16), RET()]
+
+
+for nm, r in [('C', 'C4'), ('F', 'F4'), ('G', 'G4'), ('Am', 'A3'), ('D', 'D4'), ('A', 'A4'), ('Bm', 'B3')]:
+    track('sk_' + nm, skank(r))
+track('sk_a1', [GOTO('sk_C'), GOTO('sk_F'), GOTO('sk_G'), GOTO('sk_C'), RET()])
+track('sk_a2', [ARP(0x34, 0x20), GOTO('sk_Am'), ARP(0x43, 0x20),
+                GOTO('sk_F'), GOTO('sk_G'), GOTO('sk_C'), RET()])
+track('sk_a1b', [GOTO('sk_D'), GOTO('sk_G'), GOTO('sk_A'), GOTO('sk_D'), RET()])
+track('sk_a2b', [ARP(0x34, 0x20), GOTO('sk_Bm'), ARP(0x43, 0x20),
+                 GOTO('sk_G'), GOTO('sk_A'), GOTO('sk_D'), RET()])
+for nm, r in [('Am', 'A3'), ('G', 'G3'), ('F', 'F3'), ('E', 'E3'), ('Dm', 'D4')]:
+    track('st_' + nm, [NOTE(r), DELAY(16), RET()])
+track('st_b1', [ARP(0x34, 0x20), REPEAT(3, 'st_Am'),
+                ARP(0x43, 0x20), REPEAT(3, 'st_G'), REPEAT(3, 'st_F'), REPEAT(3, 'st_E'), RET()])
+track('st_b2', [ARP(0x34, 0x20), REPEAT(3, 'st_Dm'), REPEAT(3, 'st_Am'),
+                ARP(0x43, 0x20), REPEAT(3, 'st_F'),
+                ARP(0x46, 0x20), REPEAT(3, 'st_G'), RET()])          # G7 shell (G B F)
+
+# =============================================================================== CH2 bass
+track('bass', [
+    # ---- INTRO: swell (positive slide, ends at ~51)
+    VOL(0), SLVADV(1, 4),
+    NOTE('C3'), DELAY(64), NOTE('C3'), DELAY(64), NOTE('F3'), DELAY(64), NOTE('G3'), DELAY(64),
+    # ---- A
+    VOL(63), SLV(-5),
+    SETTRA(0), GOTO('bass_p1'), GOTO('bass_p2'),
+    # ---- B: cannon boom on beat 1, then galloping eighths; transposed per chord
+    SLV(-3),
+    SETTRA(-3), GOTO('boom'), GOTO('bass_bx'),            # Am (bar 1: boom + 6 notes)
+    ADDTRA(-2), GOTO('bass_b'),                           # G
+    ADDTRA(-2), GOTO('bass_b'),                           # F
+    ADDTRA(-1), GOTO('bass_b'),                           # E
+    ADDTRA(10), GOTO('bass_b'),                           # Dm
+    ADDTRA(-5), GOTO('bass_b'),                           # Am
+    ADDTRA(-4), GOTO('bass_b'),                           # F
+    ADDTRA(2), GOTO('bass_b'),                            # G7
+    # ---- A' (lifted)
+    VOL(63), SLV(-5),
+    SETTRA(2), GOTO('bass_p1'), GOTO('bass_p2'),
+    # ---- OUTRO: long notes, fading
+    VOL(63), SLVADV(-1, 3), SETTRA(0),
+    NOTE('D3'), DELAY(64), NOTE('G2'), DELAY(64), NOTE('D3'), DELAY(64), NOTE('D2'), DELAY(64),
+    STOP(),
+])
+track('bass_h', n_('C3', 12) + n_('G3', 4) + n_('C4', 8) + n_('G3', 8) + [RET()])
+track('bass_a', [REPEAT(1, 'bass_h'), RET()])
+track('bass_f', [GOTO('bass_h')] + n_('C3', 8) + n_('D3', 8) + n_('E3', 8) + n_('G3', 8) + [RET()])
+track('bass_p1', [GOTO('bass_a'), ADDTRA(5), GOTO('bass_a'), ADDTRA(2), GOTO('bass_a'),
+                  ADDTRA(-7), GOTO('bass_f'), RET()])
+track('bass_p2', [ADDTRA(-3), GOTO('bass_a'), ADDTRA(8), GOTO('bass_a'), ADDTRA(2), GOTO('bass_a'),
+                  ADDTRA(-7), GOTO('bass_f'), RET()])
+track('bass_bx', (n_('G3', 8) + n_('C3', 8) + n_('C4', 8) + n_('G3', 8) + n_('C3', 8) + n_('G3', 8) + [RET()]))
+track('bass_b', n_('C3', 8) + n_('C3', 8) + [GOTO('bass_bx'), RET()])
+# cannon: a 16-tick downward frequency slide, then back to the volume slide of the pattern
+track('boom', [VOL(63), SLFRQ(-24), NOTE('C3'), DELAY(16), SLV(-3), RET()])
+
+CH_ENTRY = ['lead', 'chords', 'bass', 'drums']
+assert ORDER[0] == 'drums'
+
+
+# ---------------------------------------------------------------- assemble
+def assemble():
+    idx = {name: i for i, name in enumerate(ORDER)}
+    blobs = []
+    for name in ORDER:
+        b = []
+        for c in TR[name]:
+            if c[0] == 'GOTO':
+                b += [0xFC, idx[c[1]]]
+            elif c[0] == 'REPEAT':
+                b += [0xFD, c[1], idx[c[2]]]
+            else:
+                b += c[1]
+        blobs.append(b)
+    offs, pos = [], 0
+    for b in blobs:
+        offs.append(pos)
+        pos += len(b)
+    n = len(ORDER)
+    song = [n]
+    for o in offs:
+        song += [o & 0xFF, o >> 8]
+    song += [idx[e] for e in CH_ENTRY]
+    for b in blobs:
+        song += b
+    return song, idx, offs, blobs
+
+
+HEADER = '''#ifndef CUTLASS_H
+#define CUTLASS_H
+
+// ---------------------------------------------------------------------------
+//  "Cutlass Cove" - an original tropical-pirate showcase for ATMlib       {total} bytes
+//
+//  Play with:   #include "cutlass.h"
+//               ATM.play(cutlassCove);
+//
+//  A ONE-SHOT: it ends by itself after 2048 ticks (32 bars).  Tempo is set INSIDE the song
+//  (ATM_SET_TEMPO({tempo}), then ATM_ADD_TEMPO changes), so do not call ATM.setTempo() while it plays.
+//
+//  FORM (1 bar = 64 ticks = 4 beats of 16 ticks)
+//     bars  1- 4  INTRO   fade-in: sea, seagulls, arpeggio pad, bass swell        CUE 1
+//     bars  5-12  A       C | F | G | C   Am | F | G | C   (calypso / reggae)       CUE 2
+//     bars 13-20  B       Am G F E   Dm Am F G7  (storm, tempo +6)                CUE 3
+//     bars 21-28  A'      same as A, lifted a whole step: D | G | A | D ...       CUE 4
+//     bars 29-32  OUTRO   ritardando (tempo -1 per beat) + fade-out               CUE 5
+//     last tick                                                                   CUE 6
+//  Poll the cues from your sketch with  uint8_t c = ATM.check();  (0 = nothing new)
+//
+//  WHAT IT SHOWS OFF  (nearly every ATMlib command)
+//     ATM_SET_TEMPO / ATM_ADD_TEMPO      A->B speed-up, B->A' reset, outro ritardando (-1 per beat)
+//     ATM_CUE                            section markers 1..6 (and a final "song ended" 6)
+//     ATM_GOTO / ATM_REPEAT / ATM_RETURN nested tracks: bars are tracks, phrases call bars, depth 4
+//     ATM_ADD_TRA / ATM_SET_TRA          ONE riff per chord on lead + bass (C F G C, Am F G C ...),
+//                                        the whole A' section is the A tracks + SET_TRA(2)
+//     ATM_ARP                            CH1 pad (slow, 4 ticks/step), skank + stabs (1 tick/step),
+//                                        major 0x43, minor 0x34 and a G7 shell 0x46
+//     ATM_VOL / ATM_SL_VOL               plucked steel-drum lead, skank decay, drum hits
+//     ATM_SL_VOL_ADV / ATM_SL_VOL_OFF    long fades: +1 every 5-9 ticks in, -1 every 4-7 ticks out
+//     ATM_SL_FRQ                         the cannon "boom" on the bass at the start of B
+//     ATM_GLIS                           the two seagull cries (falling glissando)
+//     ATM_VIB                            pan-flute / singing lead
+//     ATM_CUT                            staccato pedal riff in B (gate: 4 ticks on, 4 off)
+//     ATM_TREM                           sea swell (slow) and the snare roll (flip every tick)
+//     ATM_NOISE                          thunder rumble at the start of B
+//     ATM_STOP_CHAN                      every channel stops by itself at the end
+//  Not used here: ATM_GOTO_ADV (loops), ATM_SL_FRQ_ADV, the *_OFF of arp/transpose, ATM_WAVEFORM.
+//
+//  CHANNELS (ATMlib defaults)
+//     CH0 PULSE   lead      CH1 SQUARE  chords      CH2 SAW  bass      CH3 NOISE  drums + sea + cues
+//
+//  Needs every ATM_FX_* option left ON (the default).  Track 0 is only CH3's entry point and is
+//  never called: ATMlib starts every channel with "current track = 0".
+// ---------------------------------------------------------------------------
+
+#include <ATMcmds.h>
+
+#ifndef Song
+#define Song const uint8_t PROGMEM
+#endif
+
+
+'''
+
+
+def render_text(idx, offs, blobs, total):
+    L = [HEADER.format(total=total, tempo=TEMPO)]
+    L.append(f'Song {SONG_VAR}[] = {{     // total song bytes = {total}')
+    L.append(f'  0x{len(ORDER):02X},                       // Number of tracks')
+    for i, name in enumerate(ORDER):
+        o = offs[i]
+        L.append(f'  0x{o & 0xFF:02X}, 0x{o >> 8:02X},                 // Address of track {i:<2d} {o:5d}   {name}')
+    L.append('')
+    for k, e in enumerate(CH_ENTRY):
+        L.append(f'  0x{idx[e]:02X},                         // CH{k} entry -> track {idx[e]} ({e})')
+    L.append('')
+    for i, name in enumerate(ORDER):
+        L.append(f'  //"Track {i}" {name}  [{len(blobs[i])}b]')
+        for c in TR[name]:
+            if c[0] == 'GOTO':
+                L.append(f'  ATM_GOTO({idx[c[1]]}),   // -> {c[1]}')
+            elif c[0] == 'REPEAT':
+                L.append(f'  ATM_REPEAT({c[1]}, {idx[c[2]]}),   // {c[1] + 1}x {c[2]}')
+            else:
+                L.append(f'  {c[0]},')
+        L.append('')
+    L += ['};', '', '#endif', '']
+    return '\n'.join(L)
+
+
+if __name__ == '__main__':
+    song, idx, offs, blobs = assemble()
+    total = len(song)
+    print(f'tracks={len(ORDER)} total={total} bytes')
+    for i, name in enumerate(ORDER):
+        print(f'  T{i:<2d} {name:10s} {len(blobs[i]):3d}b', end='   ' if i % 4 != 3 else '\n')
+    print()
+    open('/home/claude/work/cutlass.bin', 'wb').write(bytes(song))
+    open('/home/claude/work/cutlass_text.h', 'w').write(render_text(idx, offs, blobs, total))
+    print('wrote cutlass.bin / cutlass_text.h')
 ```
