@@ -9,8 +9,9 @@
 //  Play with:   #include "newsong.h"      ATM.play(italoNight);
 //
 //  Timing : ATM_SET_TEMPO(17) -> ~34 ticks/s.  1 beat = 16 ticks, 1 bar = 64 ticks
-//           8 bars = 512 ticks (every channel sums to 511 ticks of delay + 1 tick
-//           that ATMlib spends restarting, so the loop is gapless).
+//           8 bars = 512 ticks; every channel sums to exactly 512 ticks of delay;
+//           each channel's entry track ends with ATM_GOTO(itself), so the loop
+//           restarts in the same tick: no STOP, no silent tick, no hop.
 //  Chords : Am | F | C | G | Am | F | G | E
 //  Channels (ATMlib defaults):
 //     CH0 PULSE  - lead melody
@@ -28,46 +29,41 @@
 #endif
 
 
-Song italoNight[] = {     // total song bytes = 558
-  0x21,                       // Number of tracks
+Song italoNight[] = {     // total song bytes = 469
+  0x1C,                       // Number of tracks
   0x00, 0x00,                 // Address of track 0      0   silent
   0x03, 0x00,                 // Address of track 1      3   lead
-  0x18, 0x00,                 // Address of track 2     24   lead_bar1
-  0x25, 0x00,                 // Address of track 3     37   lead_bar2
-  0x32, 0x00,                 // Address of track 4     50   lead_bar3
-  0x3F, 0x00,                 // Address of track 5     63   lead_bar4
-  0x4C, 0x00,                 // Address of track 6     76   lead_bar5
-  0x5D, 0x00,                 // Address of track 7     93   lead_bar6
-  0x6E, 0x00,                 // Address of track 8    110   lead_bar7
-  0x7F, 0x00,                 // Address of track 9    127   lead_bar8
-  0x90, 0x00,                 // Address of track 10   144   chords
-  0xAB, 0x00,                 // Address of track 11   171   kick
-  0xB6, 0x00,                 // Address of track 12   182   beat_Am
-  0xC2, 0x00,                 // Address of track 13   194   beat_F
-  0xCE, 0x00,                 // Address of track 14   206   beat_C
-  0xDA, 0x00,                 // Address of track 15   218   beat_G
-  0xE6, 0x00,                 // Address of track 16   230   beat_E
-  0xF2, 0x00,                 // Address of track 17   242   beat_E_last
-  0xFE, 0x00,                 // Address of track 18   254   bass
-  0x21, 0x01,                 // Address of track 19   289   bass_beat
-  0x2D, 0x01,                 // Address of track 20   301   bass_beat4
-  0x39, 0x01,                 // Address of track 21   313   bass_bar
-  0x3F, 0x01,                 // Address of track 22   319   bass_beat4_last
-  0x4B, 0x01,                 // Address of track 23   331   bass_bar_last
-  0x51, 0x01,                 // Address of track 24   337   drums
-  0x63, 0x01,                 // Address of track 25   355   drum_A
-  0x73, 0x01,                 // Address of track 26   371   drum_B
-  0x7E, 0x01,                 // Address of track 27   382   drum_pair
-  0x83, 0x01,                 // Address of track 28   387   drum_bar
-  0x87, 0x01,                 // Address of track 29   391   drum_fill
-  0xB0, 0x01,                 // Address of track 30   432   drum_fill_last
-  0xD9, 0x01,                 // Address of track 31   473   drum_bar_fill
-  0xE0, 0x01,                 // Address of track 32   480   drum_bar_fill_last
+  0x19, 0x00,                 // Address of track 2     25   lead_bar1
+  0x26, 0x00,                 // Address of track 3     38   lead_bar2
+  0x33, 0x00,                 // Address of track 4     51   lead_bar3
+  0x40, 0x00,                 // Address of track 5     64   lead_bar4
+  0x4D, 0x00,                 // Address of track 6     77   lead_bar5
+  0x5E, 0x00,                 // Address of track 7     94   lead_bar6
+  0x6F, 0x00,                 // Address of track 8    111   lead_bar7
+  0x80, 0x00,                 // Address of track 9    128   lead_bar8
+  0x91, 0x00,                 // Address of track 10   145   chords
+  0xAD, 0x00,                 // Address of track 11   173   kick
+  0xB8, 0x00,                 // Address of track 12   184   beat_Am
+  0xC4, 0x00,                 // Address of track 13   196   beat_F
+  0xD0, 0x00,                 // Address of track 14   208   beat_C
+  0xDC, 0x00,                 // Address of track 15   220   beat_G
+  0xE8, 0x00,                 // Address of track 16   232   beat_E
+  0xF4, 0x00,                 // Address of track 17   244   bass
+  0x18, 0x01,                 // Address of track 18   280   bass_beat
+  0x24, 0x01,                 // Address of track 19   292   bass_beat4
+  0x30, 0x01,                 // Address of track 20   304   bass_bar
+  0x36, 0x01,                 // Address of track 21   310   drums
+  0x44, 0x01,                 // Address of track 22   324   drum_A
+  0x54, 0x01,                 // Address of track 23   340   drum_B
+  0x5F, 0x01,                 // Address of track 24   351   drum_pair
+  0x64, 0x01,                 // Address of track 25   356   drum_bar
+  0x68, 0x01,                 // Address of track 26   360   drum_fill
+  0x91, 0x01,                 // Address of track 27   401   drum_bar_fill
 
   0x01,                         // Channel 0 entry track  (lead)
   0x0A,                         // Channel 1 entry track  (chords)
-  0x12,                         // Channel 2 entry track  (bass)
-  0x18,                         // Channel 3 entry track  (drums)
+  0x11,                         // Channel 2 entry track  (bass)
+  0x15,                         // Channel 3 entry track  (drums)
 
   //"Track 0" silent: unused dummy (never called; index 0 is the 'stale track' slot in ATMlib)
   ATM_VOL(0),
@@ -84,7 +80,7 @@ Song italoNight[] = {     // total song bytes = 558
   ATM_GOTO(7),   // -> lead_bar6
   ATM_GOTO(8),   // -> lead_bar7
   ATM_GOTO(9),   // -> lead_bar8
-  ATM_STOP_CHAN,
+  ATM_GOTO(1),   // loop: restart this track (no STOP, no gap)
 
   //"Track 2" lead_bar1: lead bar 1 (Am)
   ATM_NOTE_E5,
@@ -219,7 +215,7 @@ Song italoNight[] = {     // total song bytes = 558
   ATM_NOTE_G4_,
   ATM_DELAY(8),
   ATM_NOTE_E4,
-  ATM_DELAY(7),
+  ATM_DELAY(8),
   ATM_RETURN,
 
   //"Track 10" chords: CH1 SQUARE: kick on every beat + offbeat arpeggiated chord stabs
@@ -231,8 +227,8 @@ Song italoNight[] = {     // total song bytes = 558
   ATM_REPEAT(3, 13),   // 4x beat_F
   ATM_REPEAT(3, 15),   // 4x beat_G
   ATM_REPEAT(2, 16),   // 3x beat_E
-  ATM_GOTO(17),   // -> beat_E_last
-  ATM_STOP_CHAN,
+  ATM_GOTO(16),   // -> beat_E
+  ATM_GOTO(10),   // loop: restart this track (no STOP, no gap)
 
   //"Track 11" kick: kick: square wave with a fast downward pitch slide (4 ticks), then silence for 4 ticks
   ATM_ARP_OFF,
@@ -289,36 +285,27 @@ Song italoNight[] = {     // total song bytes = 558
   ATM_DELAY(8),
   ATM_RETURN,
 
-  //"Track 17" beat_E_last: last beat of the loop: stab is 1 tick shorter
-  ATM_GOTO(11),   // -> kick
-  ATM_SL_VOL((uint8_t)-3),
-  ATM_VOL(24),
-  ATM_ARP(0x35, 0x20),
-  ATM_NOTE_G3_,
-  ATM_DELAY(7),
-  ATM_RETURN,
-
-  //"Track 18" bass: CH2 SAW bass: root changes via SET_TRANSPOSE (A2 is the base root)
+  //"Track 17" bass: CH2 SAW bass: root changes via SET_TRANSPOSE (A2 is the base root)
   ATM_SL_VOL((uint8_t)-5),
   ATM_SET_TRA(0),
-  ATM_GOTO(21),   // -> bass_bar
+  ATM_GOTO(20),   // -> bass_bar
   ATM_SET_TRA((uint8_t)-4),
-  ATM_GOTO(21),   // -> bass_bar
+  ATM_GOTO(20),   // -> bass_bar
   ATM_SET_TRA(3),
-  ATM_GOTO(21),   // -> bass_bar
+  ATM_GOTO(20),   // -> bass_bar
   ATM_SET_TRA((uint8_t)-2),
-  ATM_GOTO(21),   // -> bass_bar
+  ATM_GOTO(20),   // -> bass_bar
   ATM_SET_TRA(0),
-  ATM_GOTO(21),   // -> bass_bar
+  ATM_GOTO(20),   // -> bass_bar
   ATM_SET_TRA((uint8_t)-4),
-  ATM_GOTO(21),   // -> bass_bar
+  ATM_GOTO(20),   // -> bass_bar
   ATM_SET_TRA((uint8_t)-2),
-  ATM_GOTO(21),   // -> bass_bar
+  ATM_GOTO(20),   // -> bass_bar
   ATM_SET_TRA((uint8_t)-5),
-  ATM_GOTO(23),   // -> bass_bar_last
-  ATM_STOP_CHAN,
+  ATM_GOTO(20),   // -> bass_bar
+  ATM_GOTO(17),   // loop: restart this track (no STOP, no gap)
 
-  //"Track 19" bass_beat: beat 1-3: duck on the kick, then root - octave - root
+  //"Track 18" bass_beat: beat 1-3: duck on the kick, then root - octave - root
   ATM_VOL(0),
   ATM_DELAY(4),
   ATM_VOL(63),
@@ -330,7 +317,7 @@ Song italoNight[] = {     // total song bytes = 558
   ATM_DELAY(4),
   ATM_RETURN,
 
-  //"Track 20" bass_beat4: beat 4 variation: root - root - octave
+  //"Track 19" bass_beat4: beat 4 variation: root - root - octave
   ATM_VOL(0),
   ATM_DELAY(4),
   ATM_VOL(63),
@@ -342,38 +329,20 @@ Song italoNight[] = {     // total song bytes = 558
   ATM_DELAY(4),
   ATM_RETURN,
 
-  //"Track 21" bass_bar: one bar of bass
-  ATM_REPEAT(2, 19),   // 3x bass_beat
-  ATM_GOTO(20),   // -> bass_beat4
+  //"Track 20" bass_bar: one bar of bass
+  ATM_REPEAT(2, 18),   // 3x bass_beat
+  ATM_GOTO(19),   // -> bass_beat4
   ATM_RETURN,
 
-  //"Track 22" bass_beat4_last: beat 4 variation, last note 1 tick short (loop compensation)
-  ATM_VOL(0),
-  ATM_DELAY(4),
-  ATM_VOL(63),
-  ATM_NOTE_A2,
-  ATM_DELAY(4),
-  ATM_NOTE_A2,
-  ATM_DELAY(4),
-  ATM_NOTE_A3,
-  ATM_DELAY(3),
-  ATM_RETURN,
-
-  //"Track 23" bass_bar_last: last bar of bass
-  ATM_REPEAT(2, 19),   // 3x bass_beat
-  ATM_GOTO(22),   // -> bass_beat4_last
-  ATM_RETURN,
-
-  //"Track 24" drums: CH3 NOISE: tempo + loop points + 8 bars of drums
+  //"Track 21" drums: CH3 NOISE: tempo + 8 bars of drums
   ATM_SET_TEMPO(35),
-  ATM_GOTO_ADV(1, 10, 18, 24),   // loop point per channel
-  ATM_REPEAT(2, 28),   // 3x drum_bar
-  ATM_GOTO(31),   // -> drum_bar_fill
-  ATM_REPEAT(2, 28),   // 3x drum_bar
-  ATM_GOTO(32),   // -> drum_bar_fill_last
-  ATM_STOP_CHAN,
+  ATM_REPEAT(2, 25),   // 3x drum_bar
+  ATM_GOTO(27),   // -> drum_bar_fill
+  ATM_REPEAT(2, 25),   // 3x drum_bar
+  ATM_GOTO(27),   // -> drum_bar_fill
+  ATM_GOTO(21),   // loop: restart this track (no STOP, no gap)
 
-  //"Track 25" drum_A: beat 1/3: kick click, closed hat, open hat
+  //"Track 22" drum_A: beat 1/3: kick click, closed hat, open hat
   ATM_VOL(28),
   ATM_SL_VOL((uint8_t)-14),
   ATM_DELAY(4),
@@ -385,7 +354,7 @@ Song italoNight[] = {     // total song bytes = 558
   ATM_DELAY(8),
   ATM_RETURN,
 
-  //"Track 26" drum_B: beat 2/4: clap, open hat
+  //"Track 23" drum_B: beat 2/4: clap, open hat
   ATM_VOL(40),
   ATM_SL_VOL((uint8_t)-5),
   ATM_DELAY(8),
@@ -394,16 +363,16 @@ Song italoNight[] = {     // total song bytes = 558
   ATM_DELAY(8),
   ATM_RETURN,
 
-  //"Track 27" drum_pair: beats 1+2
-  ATM_GOTO(25),   // -> drum_A
-  ATM_GOTO(26),   // -> drum_B
+  //"Track 24" drum_pair: beats 1+2
+  ATM_GOTO(22),   // -> drum_A
+  ATM_GOTO(23),   // -> drum_B
   ATM_RETURN,
 
-  //"Track 28" drum_bar: one bar of drums
-  ATM_REPEAT(1, 27),   // 2x drum_pair
+  //"Track 25" drum_bar: one bar of drums
+  ATM_REPEAT(1, 24),   // 2x drum_pair
   ATM_RETURN,
 
-  //"Track 29" drum_fill: snare roll (beat 4 of bar 4)
+  //"Track 26" drum_fill: snare roll (beat 4 of bar 4)
   ATM_VOL(22),
   ATM_SL_VOL((uint8_t)-9),
   ATM_DELAY(2),
@@ -430,43 +399,10 @@ Song italoNight[] = {     // total song bytes = 558
   ATM_DELAY(2),
   ATM_RETURN,
 
-  //"Track 30" drum_fill_last: snare roll (beat 4 of bar 8), 1 tick short
-  ATM_VOL(22),
-  ATM_SL_VOL((uint8_t)-9),
-  ATM_DELAY(2),
-  ATM_VOL(26),
-  ATM_SL_VOL((uint8_t)-9),
-  ATM_DELAY(2),
-  ATM_VOL(30),
-  ATM_SL_VOL((uint8_t)-9),
-  ATM_DELAY(2),
-  ATM_VOL(34),
-  ATM_SL_VOL((uint8_t)-9),
-  ATM_DELAY(2),
-  ATM_VOL(38),
-  ATM_SL_VOL((uint8_t)-9),
-  ATM_DELAY(2),
-  ATM_VOL(42),
-  ATM_SL_VOL((uint8_t)-9),
-  ATM_DELAY(2),
-  ATM_VOL(46),
-  ATM_SL_VOL((uint8_t)-9),
-  ATM_DELAY(2),
-  ATM_VOL(50),
-  ATM_SL_VOL((uint8_t)-9),
-  ATM_DELAY(1),
-  ATM_RETURN,
-
-  //"Track 31" drum_bar_fill: bar 4: 3 beats + roll
-  ATM_GOTO(27),   // -> drum_pair
-  ATM_GOTO(25),   // -> drum_A
-  ATM_GOTO(29),   // -> drum_fill
-  ATM_RETURN,
-
-  //"Track 32" drum_bar_fill_last: bar 8: 3 beats + roll (loop compensated)
-  ATM_GOTO(27),   // -> drum_pair
-  ATM_GOTO(25),   // -> drum_A
-  ATM_GOTO(30),   // -> drum_fill_last
+  //"Track 27" drum_bar_fill: bar 4: 3 beats + roll
+  ATM_GOTO(24),   // -> drum_pair
+  ATM_GOTO(22),   // -> drum_A
+  ATM_GOTO(26),   // -> drum_fill
   ATM_RETURN,
 
 };

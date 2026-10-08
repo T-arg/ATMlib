@@ -703,6 +703,9 @@ void ATM_playroutine() {
               ch->track = ch->stackTrack[ch->stackIndex]; // note 1
             }
           }
+        } else if (cmd == 255) {
+          // 255 : EMBEDDED DATA
+          ch->ptr += read_vle(&ch->ptr);
         }
       } while (ch->delay == 0);
 

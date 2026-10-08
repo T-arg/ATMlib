@@ -7,7 +7,7 @@
 
 // Let's define the basic commands
 #define ATM_DELAY(delay) 				    		0x9F+(delay)								// uses 1 byte
-#define ATM_LONG_DELAY(ticks)			    	0xE0,((ticks)-65)							// uses 2 bytes: 65 to 192 ticks (longer: chain delays)
+#define ATM_LONG_DELAY(delay)			    	0x9F,(delay)								// uses 2 bytes
 #define ATM_GOTO(onceGoto)				    	0xFC,(onceGoto)							// uses 2 bytes
 #define ATM_REPEAT(repeatTimes,track)	  0xFD,(repeatTimes),(track)	// uses 3 bytes
 #define ATM_RETURN						    			0xFE												// uses 1 byte
@@ -58,6 +58,9 @@
 // NOTE CUT
 #define ATM_CUT(amount)									0x54,(amount)								// uses 2 bytes
 #define ATM_CUT_OFF											0x55												// uses 1 byte
+
+// WAVEFORM (0 = PULSE, 1 = SQUARE, 2 = NOISE)
+#define ATM_WAVEFORM(type)							0x56,(type)									// uses 2 bytes
 
 // Signal the sketch: ATM.check() returns this byte until the next cue or check()
 #define ATM_CUE(value)									0x57,(value)								// uses 2 bytes

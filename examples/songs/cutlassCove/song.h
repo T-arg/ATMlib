@@ -36,7 +36,7 @@
 //     ATM_TREM                           sea swell (slow) and the snare roll (flip every tick)
 //     ATM_NOISE                          thunder rumble at the start of B
 //     ATM_STOP_CHAN                      every channel stops by itself at the end
-//  Not used here: ATM_GOTO_ADV (loops), ATM_SL_FRQ_ADV, the *_OFF of arp/transpose, ATM_WAVEFORM.
+//  Not used here: ATM_GOTO_ADV (loops), ATM_SL_FRQ_ADV, the *_OFF of arp/transpose.
 //
 //  CHANNELS (ATMlib defaults)
 //     CH0 PULSE   lead      CH1 SQUARE  chords      CH2 SAW  bass      CH3 NOISE  drums + sea + cues
