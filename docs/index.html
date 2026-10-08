@@ -493,27 +493,90 @@ void loop() {
 </table></div>
 <p><strong>Channels:</strong> <code>CH_ZERO</code> (0), <code>CH_ONE</code> (1), <code>CH_TWO</code> (2), <code>CH_THREE</code> (3). Defaults at compile time: CH0 pulse, CH1 square, CH2 saw, CH3 noise (change them in <code>ATMconfig.h</code> and rebuild).</p>
 <h2>Sound effects</h2>
+<p>There are two ways to play a sound effect over a running song. The sketch <code>examples/soundEffects/sfxDemo</code> has 45 effects in each style, in the same order, so you can compare them with the A and B buttons (A = poke, B = <code>playSfx</code>, LEFT / RIGHT = next effect, UP = next song, DOWN = pause). The screen shows the name and byte size of each effect.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th></th>
+<th><code>ATM.playSfx()</code></th>
+<th>Poke</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Effect is</td>
+<td>an ordinary ATMlib command stream (<code>VOL</code>, <code>SL_VOL</code>, <code>SL_FRQ</code>, <code>GLIS</code>, <code>ARP</code>, <code>VIB</code>, <code>TREM</code>, notes)</td>
+<td>a list of 4-byte segments (volume fade, start frequency, slide, length)</td>
+</tr>
+<tr>
+<td>Size</td>
+<td>7 to 19 bytes for the demo effects</td>
+<td>5 to 17 bytes for the demo effects</td>
+</tr>
+<tr>
+<td>Timing</td>
+<td>song ticks (follows the song tempo)</td>
+<td>frames, 60 per second, independent of the song</td>
+</tr>
+<tr>
+<td>Needs</td>
+<td><code>ATM_FUNC_SFX 1</code></td>
+<td><code>ATM_FUNC_MUTE 1</code>, <code>ATM_FUNC_UNMUTE 1</code>, a call to <code>sfxUpdate()</code> once per frame</td>
+</tr>
+<tr>
+<td>While the song is paused</td>
+<td>works</td>
+<td>needs a small workaround (below)</td>
+</tr>
+<tr>
+<td>Sounds like</td>
+<td>whatever the playroutine can do (arpeggios, vibrato, glissando)</td>
+<td>simple beeps, sweeps and fades</td>
+</tr>
+</tbody>
+</table></div>
+<h3><code>playSfx</code></h3>
 <p>A one-track effect is a PROGMEM byte list that ends with <code>ATM_STOP_CHAN</code>. <code>ATMcmds.h</code> provides a wrapper:</p>
 <pre><code class="language-cpp">ATM_SFX_TRACK(sfxJump,
-  ATM_VOL(48),
-  ATM_NOTE_C5,
-  ATM_DELAY(8)
+  ATM_VOL(50),
+  ATM_SL_VOL((uint8_t)-3),   // fade out
+  ATM_GLIS(0),               // glide up one semitone per tick
+  ATM_NOTE_C4,
+  ATM_DELAY(14)
 );
 // expands to: const uint8_t sfxJump[] PROGMEM = { ..., ATM_STOP_CHAN };
 </code></pre>
-<p>Play it with <code>ATM.playSfx(sfxJump, CH_THREE);</code>. The effect takes the channel for its duration and returns it to the song when it ends. The usual pattern is to put hits on the noise channel or a spare voice so the melody is not stolen. A raw effect can carry its own tempo and slides:</p>
-<pre><code class="language-cpp">const uint8_t sfx0[] PROGMEM = {
-  ATM_SET_TEMPO(32),
-  ATM_VOL(63),
-  ATM_SL_VOL((uint8_t)-8),
-  ATM_NOTE_F6,
-  ATM_DELAY(5),
-  ATM_NOTE_G6,
-  ATM_DELAY(11),
-  ATM_STOP_CHAN,
-};
+<p>Play it with <code>ATM.playSfx(sfxJump, CH_ONE);</code>. The effect takes the channel for its duration, silences the song on that channel (even while the song is paused) and gives the channel back when it ends. Nothing else is needed: no mute calls. The usual pattern is to put hits on the noise channel (<code>CH_THREE</code>) or on a voice that is quiet in the song. <code>playSfx()</code> also works with no song playing.</p>
+<ul>
+<li><strong>Timing follows the song tempo.</strong> Delays are in ticks, so the same effect lasts about 30 % shorter in a song at 52 than in a song at 38. Do not put <code>ATM_SET_TEMPO</code> in an effect: it changes the tempo of the song as well.</li>
+<li><strong>One track, no calls.</strong> <code>GOTO</code> and <code>REPEAT</code> need other tracks, so an effect is a flat list of commands.</li>
+<li><strong>One slide slot per channel</strong> (section 4.5): <code>SL_VOL</code> and <code>SL_FRQ</code> replace each other. For a pitch sweep with a fade use <code>GLIS</code> plus <code>SL_VOL</code>.</li>
+</ul>
+<h3>Poke</h3>
+<p>The effect writes the oscillator registers directly, once per frame, instead of going through a track. <code>examples/soundEffects/sfxDemo/sfx.h</code> is the player (about 70 lines; copy it with the sketch). An effect is a list of segments and an end marker:</p>
+<pre><code class="language-cpp">SFX_SEG(m, SFX_HZ(1320), SFX_SL(0), 4)    // m = volume shift 0..3, start Hz, slide Hz/frame, frames
+SFX_SEG(m, SFX_HZ(1760), SFX_SL(0), 14)
+SFX_END
 </code></pre>
-<p><code>playSfx()</code> works without a song, too (nothing else needs to be playing). <code>muteChannel()</code> / <code>unMuteChannel()</code> are an alternative that frees a channel by hand; both are compiled in by default, but some of the example <code>ATMconfig.h</code> files turn them off (<code>ATM_FUNC_MUTE 0</code>), so check yours.</p>
+<p>Volume at each frame is <code>min(63, framesLeft &lt;&lt; m)</code>, so every segment fades out; <code>m</code> sets how long it stays loud (3 = short and loud, 0 = long and soft). A segment is 4 bytes, plus 1 for the end marker. Play it with <code>sfxPlay(effect, channel)</code> and call <code>sfxUpdate()</code> once per frame (it must be 60 times a second, e.g. right after <code>nextFrame()</code>).</p>
+<ul>
+<li><strong>Units.</strong> The oscillator frequency unit is 31250 / 65536 = 0.4768 Hz; <code>SFX_HZ()</code> and <code>SFX_SL()</code> convert. Keep the pitch between 40 Hz and 7800 Hz and the slide within about +-240 Hz per frame (<code>SFX_SL</code> is applied four times per frame).</li>
+<li><strong>Mute.</strong> The player mutes its channel with <code>ATM.muteChannel()</code> so the playroutine does not overwrite the values. The playroutine clears every mute when a song restarts a loop, so the mute is <strong>re-asserted every frame</strong> (that is why <code>sfxUpdate()</code> must run every frame), and each mute change is wrapped in <code>cli()</code> / <code>SREG</code> because the playroutine runs in an interrupt.</li>
+<li><strong>Noise channel (CH3).</strong> Never write <code>osc[3].freq</code>: it holds the noise shift register. The player only sets the volume there (halved).</li>
+<li><strong>A running song is required.</strong> The poke only works while the playroutine interrupt is running, so not after a one-shot song has ended; use <code>playSfx</code> there.</li>
+<li><strong>While paused.</strong> <code>ATM.pause()</code> makes the playroutine set the volume of every channel without a <code>playSfx</code> to 0 about 38 times a second, which would chop a poked effect. The demo starts a 4-byte silent <code>playSfx</code> on the effect's channel first (<code>ATM.playSfx(pokeHold, ch)</code> with <code>ATM_SFX_TRACK(pokeHold, ATM_VOL(0), ATM_DELAY(40))</code>), which keeps the playroutine off that channel.</li>
+<li>Starting a poke effect while a <code>playSfx</code> runs on the same channel (or the other way round) makes one of them silent. The demo stops the poke effect (<code>sfxStop()</code>) before <code>playSfx</code>.</li>
+</ul>
+<h3>Keep the music quieter than the effects</h3>
+<p><strong>In-game music should play at about 60 % of the volume used for title music</strong> whenever the game uses sound effects; effects at full volume are otherwise lost behind the song. Title or menu music (no effects) can stay at 100 %. Do not scale the volume with a runtime control; scale the numbers in the song at compile time, which costs no bytes:</p>
+<pre><code class="language-cpp">#define MUSIC_VOL_PCT 60                       // 100 = original
+#define MV(v) ((v) * MUSIC_VOL_PCT / 100)
+// the fade step, scaled the same way and never below 1 (a 0 would stop the fade)
+#define MS(n) ((uint8_t)-((((n) * MUSIC_VOL_PCT + 50) / 100) &lt; 1 ? 1 : (((n) * MUSIC_VOL_PCT + 50) / 100)))
+
+ATM_VOL(MV(34)), ATM_SL_VOL(MS(2)), ...        // instead of ATM_VOL(34), ATM_SL_VOL((uint8_t)-2)
+</code></pre>
+<p>Scale <strong>both</strong>: if only <code>ATM_VOL</code> is scaled, every note starts lower but fades at the old rate and dies sooner, so the song sounds clipped and drier. Scaling the fade step too keeps the shape. A fade step of 1 cannot be made smaller, so very slow fades (<code>SL_VOL(-1)</code>) still end somewhat earlier at 60 % than in the original. All five songs in <code>sfxDemo/</code> use these macros (<code>MUSIC_VOL_PCT</code> is at the top of <code>song.h</code>); <code>extras/tools/gen_demo_songs.py</code> emits them.</p>
 <h2>Cues</h2>
 <p>Put <code>ATM_CUE(id)</code> anywhere in a score (2 bytes) and poll it from the sketch:</p>
 <pre><code class="language-cpp">uint8_t id = ATM.check();      // returns the last cue and clears it
@@ -950,9 +1013,9 @@ then                 track data, tracks back to back, in table order
 <td>Valid and seamless: <code>ATM_DELAY(64), ATM_DELAY(10)</code> = 74 ticks.</td>
 </tr>
 <tr>
-<td><code>ATM_LONG_DELAY(n)</code></td>
-<td><strong>do not use</strong></td>
-<td>The macro in <code>ATMcmds.h</code> emits <code>0x9F,n</code> (which is STOP). The real long-delay opcode is raw <code>0xE0, n</code> (n+65 ticks). Chained <code>ATM_DELAY</code> is simpler.</td>
+<td><code>ATM_LONG_DELAY(ticks)</code></td>
+<td><code>0xE0, ticks-65</code></td>
+<td>Wait <strong>65 to 192 ticks</strong> in 2 bytes (the byte after <code>0xE0</code> is a variable-length number, 7 bits per byte, the delay is that number + 65). For other lengths chain <code>ATM_DELAY</code>s: <code>ATM_LONG_DELAY(100), ATM_DELAY(30)</code> = 130 ticks. Pass the real tick count; do not pass 0 to 64 (the subtraction would wrap).</td>
 </tr>
 <tr>
 <td><code>ATM_GOTO(t)</code></td>
@@ -1146,10 +1209,10 @@ then                 track data, tracks back to back, in table order
 </tr>
 <tr>
 <td><strong>64+22<br/>86<br/>0x56</strong></td>
-<td>WAVEFORM (<em><strong>X</strong></em>)</td>
-<td>UBYTE (8-bit)</td>
-<td>Defined in <code>ATMcmds.h</code> (<code>ATM_WAVEFORM</code>) but <strong>not implemented</strong> by the playroutine: do not use. Waveforms are chosen at compile time in <code>ATMconfig.h</code>.</td>
-<td>2</td>
+<td><em>unused</em></td>
+<td></td>
+<td>Not implemented by the playroutine (there is no <code>ATM_WAVEFORM</code>). Waveforms are chosen at compile time in <code>ATMconfig.h</code>.</td>
+<td></td>
 </tr>
 <tr>
 <td><strong>64+23<br/>87<br/>0x57</strong></td>
@@ -1313,11 +1376,6 @@ then                 track data, tracks back to back, in table order
 <td><code>0x9E, a,b,c,d</code></td>
 <td>Set the <strong>restart track</strong> for CH0..CH3 used when all channels have stopped (4.4). <strong>Obsolete for loops</strong> (it needs <code>STOP</code>, which leaves a silent tick); do not use it any more.</td>
 </tr>
-<tr>
-<td><code>ATM_WAVEFORM(t)</code></td>
-<td><strong>do not use</strong></td>
-<td>Defined in the header (<code>0x56</code>) but the playroutine has no handler for it, so the parameter byte would be run as a command. Waveforms are compile-time (<code>ATMconfig.h</code>).</td>
-</tr>
 </tbody>
 </table></div>
 <h3>3.5 Writing rules for the <code>.h</code></h3>
@@ -1431,7 +1489,6 @@ then                 track data, tracks back to back, in table order
 <h3>4.8 Known traps in the library files</h3>
 <ul>
 <li><code>ATM_DELAY(0)</code> is the STOP byte.</li>
-<li><code>ATM_LONG_DELAY</code> macro is wrong; <code>ATM_WAVEFORM</code> is unhandled (section 3.2 and 3.4).</li>
 <li>Note 1 is <strong>C2</strong> (<code>ATM_NOTE_C2</code>). Older documents called it C1 or C4: the name is a label, see section 5.2.</li>
 <li>README says tempo values are 0..127 and "the higher the tempo, the more CPU".</li>
 </ul>
@@ -1516,6 +1573,7 @@ then                 track data, tracks back to back, in table order
 <li><strong>Loops must be hop-free.</strong> A <code>STOP</code> + <code>GOTO_ADV</code> restart silences all four channels for one tick (about 30 ms) at every loop, and it is clearly audible. Make every loop a <em>self-loop</em>: each channel's entry track ends with <code>ATM_GOTO(&lt;itself&gt;)</code> and every channel sums to exactly <code>L</code> ticks. See section 6.</li>
 <li><strong>Tempo belongs to the sketch when the author says so.</strong> If the sketch sets it from the sketch (<code>ATM.setTempo()</code>), leave <code>ATM_SET_TEMPO</code> out of the song (<code>quest.h</code> has none now: without it the song plays at ATMlib's default of 25, not 34).</li>
 <li><strong>Quality bar:</strong> Italo Night, Midnight Run and Quest Theme are the reference songs; the in-game loops (section 8.7) are the reference for tiny budgets. Pixel Chase was rejected: too plain, and actually broken (section 12).</li>
+<li><strong>Game music at 60 %.</strong> Songs meant for in-game use with sound effects are written (or scaled) to about 60 % of the volume of title music, with <code>ATM_VOL(MV(n))</code> and <code>ATM_SL_VOL(MS(n))</code> (see <em>Sound effects</em>). Title music stays at 100 %.</li>
 </ol>
 <h3>0.2 Starter prompt for a fresh session</h3>
 <div class="note">
@@ -1615,6 +1673,7 @@ then                 track data, tracks back to back, in table order
 </ul>
 <h3>8.7 Tiny in-game loops (50 to 100 bytes)</h3>
 <p><strong>The 30-song sketch.</strong> All small in-game loops now live in ONE sketch, <code>examples/loops/inGameSongs</code> (<code>song.h</code> holds a <code>PROGMEM</code> pointer array, the A button switches song, the screen shows the name and its byte size, B pauses). Songs 1-5 are the five below, 6-10 chiptune, 11-15 Sega, 16-20 NES, 21-25 C64, 26-30 Game Boy style, each 50 to 100 bytes (list in section 13). Remember that Arduino keeps a stale <code>build</code> folder: if the IDE still shows 25 songs after an update, clean the build.</p>
+<p><strong>Volume.</strong> These loops are written at full volume. If the game also plays sound effects, scale them to about 60 % (see <em>Sound effects</em>, "Keep the music quieter than the effects").</p>
 <p>The five songs in <code>ingame5.h</code> (Meadow Waltz 94 B, Lantern Lake 73 B, Sunday Market 89 B, Pixel Breeze 87 B, Music Box Tide 87 B) were written to show how little a pleasant, smooth, looping background track needs. What they share:</p>
 <ul>
 <li><strong>No drums unless the groove needs them</strong> (Lantern Lake, Meadow Waltz, Pixel Breeze, Music Box Tide have none; Sunday Market uses one 16-tick brush track with <code>REPEAT</code>). Harmony and a good bass do the work.</li>
@@ -1691,7 +1750,7 @@ then                 track data, tracks back to back, in table order
 <tbody>
 <tr>
 <td><code>atmsim.py</code></td>
-<td>Python model of the playroutine's control flow <strong>and</strong> per-tick state: call stack, track-0 behaviour, delays, <code>REPEAT</code> counters, transposition, volume retrigger, arpeggio, volume/frequency slides (with the missing upper clamp), tremolo, vibrato, glissando, note-cut gate (it raises if cut is used with transposition), tempo commands, cues, and the STOP / <code>GOTO_ADV</code> restart rule for old files. It does <strong>not</strong> render audio. After <code>simulate()</code>, <code>atmsim.TIMELINE[tick]</code> holds <code>(volume, frequency_hz)</code> for each of the four channels, which is how fades, the cut gate and slides are checked. It raises on <code>ATM_WAVEFORM</code> and the long delay. <code>atmsim.DELAYLOG</code> (tick, channel, address of every delay executed) and <code>atmsim.STOPLOG</code> (tick, channel, address of every <code>STOP</code>) support converters and loop checks.</td>
+<td>Python model of the playroutine's control flow <strong>and</strong> per-tick state: call stack, track-0 behaviour, delays, <code>REPEAT</code> counters, transposition, volume retrigger, arpeggio, volume/frequency slides (with the missing upper clamp), tremolo, vibrato, glissando, note-cut gate (it raises if cut is used with transposition), tempo commands, cues, and the STOP / <code>GOTO_ADV</code> restart rule for old files. It does <strong>not</strong> render audio. After <code>simulate()</code>, <code>atmsim.TIMELINE[tick]</code> holds <code>(volume, frequency_hz)</code> for each of the four channels, which is how fades, the cut gate and slides are checked. It models the long delay (<code>0xE0</code>). <code>atmsim.DELAYLOG</code> (tick, channel, address of every delay executed) and <code>atmsim.STOPLOG</code> (tick, channel, address of every <code>STOP</code>) support converters and loop checks.</td>
 </tr>
 <tr>
 <td><code>gen_quest.py</code></td>
@@ -1772,7 +1831,7 @@ Song questTheme[] = {     // total song bytes = 233
 <p><code>extras/tools/gen_quest.py</code> writes exactly this.</p>
 <h2>11. Using a song in a sketch</h2>
 <p>See <em>Quick start</em> and <em>API</em> at the top of this file. In short: <code>#include "song.h"</code>, create <code>ATMsynth ATM;</code>, call <code>ATM.play(&lt;array name&gt;)</code> in <code>setup()</code>.</p>
-<p><strong>Folder layout (current):</strong> <code>ATMlib/examples/loops/&lt;name&gt;/</code> for songs that loop forever (Italo Night, Escaper Droid, Neon Heart, Quest Theme, Star Light, inGameSongs), <code>ATMlib/examples/songs/&lt;name&gt;/</code> for one-shots and long songs (Cutlass Cove, Midnight Run, Orbital Rush), <code>ATMlib/examples/soundEffects/</code> for effects. Each song is an Arduino sketch folder with <code>&lt;name&gt;.ino</code>, <code>song.h</code>, <code>ATMconfig.h</code>, <code>bitmaps.h</code>: duplicate an existing folder, rename the folder and the <code>.ino</code> (the Arduino IDE wants both to match), put the data in <code>song.h</code> and change <code>ATM.play(&lt;name&gt;)</code>.</p>
+<p><strong>Folder layout (current):</strong> <code>ATMlib/examples/loops/&lt;name&gt;/</code> for songs that loop forever (Italo Night, Escaper Droid, Neon Heart, Quest Theme, Star Light, inGameSongs), <code>ATMlib/examples/songs/&lt;name&gt;/</code> for one-shots and long songs (Cutlass Cove, Midnight Run, Orbital Rush), <code>ATMlib/examples/soundEffects/</code> for effects (<code>sfxDemo</code>: 45 poke + 45 <code>playSfx</code> effects and 5 songs). Each song is an Arduino sketch folder with <code>&lt;name&gt;.ino</code>, <code>song.h</code>, <code>ATMconfig.h</code>, <code>bitmaps.h</code>: duplicate an existing folder, rename the folder and the <code>.ino</code> (the Arduino IDE wants both to match), put the data in <code>song.h</code> and change <code>ATM.play(&lt;name&gt;)</code>.</p>
 <p><strong>Several songs in one sketch:</strong> keep the song arrays in <code>PROGMEM</code> pointer arrays (see <code>examples/loops/inGameSongs</code>).</p>
 <h2>12. Mistakes made on this project (do not repeat)</h2>
 <ol>
@@ -2077,6 +2136,34 @@ Song questTheme[] = {     // total song bytes = 233
 <td>Game Boy style: sleepy menu music, F major</td>
 <td>78 B</td>
 <td>Tempo 24, loop 256 ticks. Self-loop, one track per channel.</td>
+</tr>
+<tr>
+<td><code>soundEffects/sfxDemo</code></td>
+<td><code>pipeDream</code></td>
+<td>NES style: pulse arpeggio hops over an octave-bouncing bass, C major (C Am F G)</td>
+<td>104 B</td>
+<td>Tempo 42, loop 256 ticks, 60 % volume (<code>MV</code> / <code>MS</code>). Self-loop.</td>
+</tr>
+<tr>
+<td><code>soundEffects/sfxDemo</code></td>
+<td><code>canyonRaid</code></td>
+<td>Atari 2600 style: wavering low square lead, saw pump bass, noise thump, A minor (Am G F E)</td>
+<td>102 B</td>
+<td>Tempo 36, loop 256 ticks, 60 % volume. Lead on CH1, CH0 silent.</td>
+</tr>
+<tr>
+<td><code>soundEffects/sfxDemo</code></td>
+<td><code>greenZone</code></td>
+<td>Sega style: bright pulse lead, syncopated bass, hat-heavy beat, C major (C Bb F G)</td>
+<td>106 B</td>
+<td>Tempo 44, loop 256 ticks, 60 % volume.</td>
+</tr>
+<tr>
+<td><code>soundEffects/sfxDemo</code></td>
+<td><code>neonHighway</code></td>
+<td>Sega style: arpeggio lead, answering melody, driving 16th bass, D minor (Dm Bb F C)</td>
+<td>108 B</td>
+<td>Tempo 44, loop 256 ticks, 60 % volume. All four channels used.</td>
 </tr>
 <tr>
 <td><em>(removed)</em></td>

@@ -113,33 +113,71 @@ Create one `ATMsynth` and call these from the sketch. Every method except `play(
 
 ## Sound effects
 
+There are two ways to play a sound effect over a running song. The sketch `examples/soundEffects/sfxDemo` has 45 effects in each style, in the same order, so you can compare them with the A and B buttons (A = poke, B = `playSfx`, LEFT / RIGHT = next effect, UP = next song, DOWN = pause). The screen shows the name and byte size of each effect.
+
+| | `ATM.playSfx()` | Poke |
+|---|---|---|
+| Effect is | an ordinary ATMlib command stream (`VOL`, `SL_VOL`, `SL_FRQ`, `GLIS`, `ARP`, `VIB`, `TREM`, notes) | a list of 4-byte segments (volume fade, start frequency, slide, length) |
+| Size | 7 to 19 bytes for the demo effects | 5 to 17 bytes for the demo effects |
+| Timing | song ticks (follows the song tempo) | frames, 60 per second, independent of the song |
+| Needs | `ATM_FUNC_SFX 1` | `ATM_FUNC_MUTE 1`, `ATM_FUNC_UNMUTE 1`, a call to `sfxUpdate()` once per frame |
+| While the song is paused | works | needs a small workaround (below) |
+| Sounds like | whatever the playroutine can do (arpeggios, vibrato, glissando) | simple beeps, sweeps and fades |
+
+### `playSfx`
+
 A one-track effect is a PROGMEM byte list that ends with `ATM_STOP_CHAN`. `ATMcmds.h` provides a wrapper:
 
 ```cpp
 ATM_SFX_TRACK(sfxJump,
-  ATM_VOL(48),
-  ATM_NOTE_C5,
-  ATM_DELAY(8)
+  ATM_VOL(50),
+  ATM_SL_VOL((uint8_t)-3),   // fade out
+  ATM_GLIS(0),               // glide up one semitone per tick
+  ATM_NOTE_C4,
+  ATM_DELAY(14)
 );
 // expands to: const uint8_t sfxJump[] PROGMEM = { ..., ATM_STOP_CHAN };
 ```
 
-Play it with `ATM.playSfx(sfxJump, CH_THREE);`. The effect takes the channel for its duration and returns it to the song when it ends. The usual pattern is to put hits on the noise channel or a spare voice so the melody is not stolen. A raw effect can carry its own tempo and slides:
+Play it with `ATM.playSfx(sfxJump, CH_ONE);`. The effect takes the channel for its duration, silences the song on that channel (even while the song is paused) and gives the channel back when it ends. Nothing else is needed: no mute calls. The usual pattern is to put hits on the noise channel (`CH_THREE`) or on a voice that is quiet in the song. `playSfx()` also works with no song playing.
+
+* **Timing follows the song tempo.** Delays are in ticks, so the same effect lasts about 30 % shorter in a song at 52 than in a song at 38. Do not put `ATM_SET_TEMPO` in an effect: it changes the tempo of the song as well.
+* **One track, no calls.** `GOTO` and `REPEAT` need other tracks, so an effect is a flat list of commands.
+* **One slide slot per channel** (section 4.5): `SL_VOL` and `SL_FRQ` replace each other. For a pitch sweep with a fade use `GLIS` plus `SL_VOL`.
+
+### Poke
+
+The effect writes the oscillator registers directly, once per frame, instead of going through a track. `examples/soundEffects/sfxDemo/sfx.h` is the player (about 70 lines; copy it with the sketch). An effect is a list of segments and an end marker:
 
 ```cpp
-const uint8_t sfx0[] PROGMEM = {
-  ATM_SET_TEMPO(32),
-  ATM_VOL(63),
-  ATM_SL_VOL((uint8_t)-8),
-  ATM_NOTE_F6,
-  ATM_DELAY(5),
-  ATM_NOTE_G6,
-  ATM_DELAY(11),
-  ATM_STOP_CHAN,
-};
+SFX_SEG(m, SFX_HZ(1320), SFX_SL(0), 4)    // m = volume shift 0..3, start Hz, slide Hz/frame, frames
+SFX_SEG(m, SFX_HZ(1760), SFX_SL(0), 14)
+SFX_END
 ```
 
-`playSfx()` works without a song, too (nothing else needs to be playing). `muteChannel()` / `unMuteChannel()` are an alternative that frees a channel by hand; both are compiled in by default, but some of the example `ATMconfig.h` files turn them off (`ATM_FUNC_MUTE 0`), so check yours.
+Volume at each frame is `min(63, framesLeft << m)`, so every segment fades out; `m` sets how long it stays loud (3 = short and loud, 0 = long and soft). A segment is 4 bytes, plus 1 for the end marker. Play it with `sfxPlay(effect, channel)` and call `sfxUpdate()` once per frame (it must be 60 times a second, e.g. right after `nextFrame()`).
+
+* **Units.** The oscillator frequency unit is 31250 / 65536 = 0.4768 Hz; `SFX_HZ()` and `SFX_SL()` convert. Keep the pitch between 40 Hz and 7800 Hz and the slide within about +-240 Hz per frame (`SFX_SL` is applied four times per frame).
+* **Mute.** The player mutes its channel with `ATM.muteChannel()` so the playroutine does not overwrite the values. The playroutine clears every mute when a song restarts a loop, so the mute is **re-asserted every frame** (that is why `sfxUpdate()` must run every frame), and each mute change is wrapped in `cli()` / `SREG` because the playroutine runs in an interrupt.
+* **Noise channel (CH3).** Never write `osc[3].freq`: it holds the noise shift register. The player only sets the volume there (halved).
+* **A running song is required.** The poke only works while the playroutine interrupt is running, so not after a one-shot song has ended; use `playSfx` there.
+* **While paused.** `ATM.pause()` makes the playroutine set the volume of every channel without a `playSfx` to 0 about 38 times a second, which would chop a poked effect. The demo starts a 4-byte silent `playSfx` on the effect's channel first (`ATM.playSfx(pokeHold, ch)` with `ATM_SFX_TRACK(pokeHold, ATM_VOL(0), ATM_DELAY(40))`), which keeps the playroutine off that channel.
+* Starting a poke effect while a `playSfx` runs on the same channel (or the other way round) makes one of them silent. The demo stops the poke effect (`sfxStop()`) before `playSfx`.
+
+### Keep the music quieter than the effects
+
+**In-game music should play at about 60 % of the volume used for title music** whenever the game uses sound effects; effects at full volume are otherwise lost behind the song. Title or menu music (no effects) can stay at 100 %. Do not scale the volume with a runtime control; scale the numbers in the song at compile time, which costs no bytes:
+
+```cpp
+#define MUSIC_VOL_PCT 60                       // 100 = original
+#define MV(v) ((v) * MUSIC_VOL_PCT / 100)
+// the fade step, scaled the same way and never below 1 (a 0 would stop the fade)
+#define MS(n) ((uint8_t)-((((n) * MUSIC_VOL_PCT + 50) / 100) < 1 ? 1 : (((n) * MUSIC_VOL_PCT + 50) / 100)))
+
+ATM_VOL(MV(34)), ATM_SL_VOL(MS(2)), ...        // instead of ATM_VOL(34), ATM_SL_VOL((uint8_t)-2)
+```
+
+Scale **both**: if only `ATM_VOL` is scaled, every note starts lower but fades at the old rate and dies sooner, so the song sounds clipped and drier. Scaling the fade step too keeps the shape. A fade step of 1 cannot be made smaller, so very slow fades (`SL_VOL(-1)`) still end somewhat earlier at 60 % than in the original. All five songs in `sfxDemo/` use these macros (`MUSIC_VOL_PCT` is at the top of `song.h`); `extras/tools/gen_demo_songs.py` emits them.
 
 ## Cues
 
@@ -368,6 +406,7 @@ A single-file HTML tracker for this library (`atm-tracker-editor.html`; the proj
 5. **Loops must be hop-free.** A `STOP` + `GOTO_ADV` restart silences all four channels for one tick (about 30 ms) at every loop, and it is clearly audible. Make every loop a *self-loop*: each channel's entry track ends with `ATM_GOTO(<itself>)` and every channel sums to exactly `L` ticks. See section 6.
 6. **Tempo belongs to the sketch when the author says so.** If the sketch sets it from the sketch (`ATM.setTempo()`), leave `ATM_SET_TEMPO` out of the song (`quest.h` has none now: without it the song plays at ATMlib's default of 25, not 34).
 7. **Quality bar:** Italo Night, Midnight Run and Quest Theme are the reference songs; the in-game loops (section 8.7) are the reference for tiny budgets. Pixel Chase was rejected: too plain, and actually broken (section 12).
+8. **Game music at 60 %.** Songs meant for in-game use with sound effects are written (or scaled) to about 60 % of the volume of title music, with `ATM_VOL(MV(n))` and `ATM_SL_VOL(MS(n))` (see *Sound effects*). Title music stays at 100 %.
 
 ### 0.2 Starter prompt for a fresh session
 
@@ -780,6 +819,8 @@ Beat A (beats 1, 3) = kick(4) + closed hat(4) + open hat(8). Beat B (beats 2, 4)
 
 **The 30-song sketch.** All small in-game loops now live in ONE sketch, `examples/loops/inGameSongs` (`song.h` holds a `PROGMEM` pointer array, the A button switches song, the screen shows the name and its byte size, B pauses). Songs 1-5 are the five below, 6-10 chiptune, 11-15 Sega, 16-20 NES, 21-25 C64, 26-30 Game Boy style, each 50 to 100 bytes (list in section 13). Remember that Arduino keeps a stale `build` folder: if the IDE still shows 25 songs after an update, clean the build.
 
+**Volume.** These loops are written at full volume. If the game also plays sound effects, scale them to about 60 % (see *Sound effects*, "Keep the music quieter than the effects").
+
 The five songs in `ingame5.h` (Meadow Waltz 94 B, Lantern Lake 73 B, Sunday Market 89 B, Pixel Breeze 87 B, Music Box Tide 87 B) were written to show how little a pleasant, smooth, looping background track needs. What they share:
 
 * **No drums unless the groove needs them** (Lantern Lake, Meadow Waltz, Pixel Breeze, Music Box Tide have none; Sunday Market uses one 16-tick brush track with `REPEAT`). Harmony and a good bass do the work.
@@ -927,7 +968,7 @@ Song questTheme[] = {     // total song bytes = 233
 
 See *Quick start* and *API* at the top of this file. In short: `#include "song.h"`, create `ATMsynth ATM;`, call `ATM.play(<array name>)` in `setup()`.
 
-**Folder layout (current):** `ATMlib/examples/loops/<name>/` for songs that loop forever (Italo Night, Escaper Droid, Neon Heart, Quest Theme, Star Light, inGameSongs), `ATMlib/examples/songs/<name>/` for one-shots and long songs (Cutlass Cove, Midnight Run, Orbital Rush), `ATMlib/examples/soundEffects/` for effects. Each song is an Arduino sketch folder with `<name>.ino`, `song.h`, `ATMconfig.h`, `bitmaps.h`: duplicate an existing folder, rename the folder and the `.ino` (the Arduino IDE wants both to match), put the data in `song.h` and change `ATM.play(<name>)`.
+**Folder layout (current):** `ATMlib/examples/loops/<name>/` for songs that loop forever (Italo Night, Escaper Droid, Neon Heart, Quest Theme, Star Light, inGameSongs), `ATMlib/examples/songs/<name>/` for one-shots and long songs (Cutlass Cove, Midnight Run, Orbital Rush), `ATMlib/examples/soundEffects/` for effects (`sfxDemo`: 45 poke + 45 `playSfx` effects and 5 songs). Each song is an Arduino sketch folder with `<name>.ino`, `song.h`, `ATMconfig.h`, `bitmaps.h`: duplicate an existing folder, rename the folder and the `.ino` (the Arduino IDE wants both to match), put the data in `song.h` and change `ATM.play(<name>)`.
 
 **Several songs in one sketch:** keep the song arrays in `PROGMEM` pointer arrays (see `examples/loops/inGameSongs`).
 
@@ -993,6 +1034,10 @@ See *Quick start* and *API* at the top of this file. In short: `#include "song.h
 | `loops/inGameSongs` | `linkCable` | Game Boy style: playful 3/4 bounce, A minor | 99 B | Tempo 30, loop 192 ticks. Self-loop, one track per channel. |
 | `loops/inGameSongs` | `brickLogic` | Game Boy style: thoughtful staccato puzzle loop, D minor | 86 B | Tempo 34, loop 256 ticks. Self-loop, one track per channel. |
 | `loops/inGameSongs` | `dmgDawn` | Game Boy style: sleepy menu music, F major | 78 B | Tempo 24, loop 256 ticks. Self-loop, one track per channel. |
+| `soundEffects/sfxDemo` | `pipeDream` | NES style: pulse arpeggio hops over an octave-bouncing bass, C major (C Am F G) | 104 B | Tempo 42, loop 256 ticks, 60 % volume (`MV` / `MS`). Self-loop. |
+| `soundEffects/sfxDemo` | `canyonRaid` | Atari 2600 style: wavering low square lead, saw pump bass, noise thump, A minor (Am G F E) | 102 B | Tempo 36, loop 256 ticks, 60 % volume. Lead on CH1, CH0 silent. |
+| `soundEffects/sfxDemo` | `greenZone` | Sega style: bright pulse lead, syncopated bass, hat-heavy beat, C major (C Bb F G) | 106 B | Tempo 44, loop 256 ticks, 60 % volume. |
+| `soundEffects/sfxDemo` | `neonHighway` | Sega style: arpeggio lead, answering melody, driving 16th bass, D minor (Dm Bb F C) | 108 B | Tempo 44, loop 256 ticks, 60 % volume. All four channels used. |
 | *(removed)* | `pixelChase` | NES-like | 181 B | **Broken (track-0 bug), rejected. Do not use.** |
 
 ---
