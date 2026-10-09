@@ -7,7 +7,7 @@
 //
 //  Play:  #include "newsong2.h"    ATM.play(escaperDroid);
 //
-//  Timing : ATM_SET_TEMPO(17) → same as Italo Night, ~127.5 BPM.
+//  Timing : ATM_SET_TEMPO("36") → same as Italo Night, ~127.5 BPM.
 //            1 beat = 16 ticks, 1 bar = 64 ticks, 8 bars = 512 ticks.
 //            Loop: every channel sums to 512 delay ticks and its entry track
 //            ends with ATM_GOTO(itself): same-tick restart, no STOP, no hop.
@@ -323,7 +323,7 @@ Song escaperDroid[] = {     // total song bytes = 455
   ATM_RETURN,
 
   // Track 20: drums  [14b]  CH3 NOISE: tempo + 8 bars
-  ATM_SET_TEMPO(17),
+  ATM_SET_TEMPO(36),
   ATM_REPEAT(2,24),
   ATM_GOTO(26),
   ATM_REPEAT(2,24),

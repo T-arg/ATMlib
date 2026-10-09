@@ -35,7 +35,7 @@ While _Squawk_ provides a very nice synth, it wasn't optimized for a small footp
 * [4. How the playroutine really behaves](#4-how-the-playroutine-really-behaves)
 * [5. Timing, tempo and pitch](#5-timing-tempo-and-pitch)
 * [6. Hop-free loops: the self-loop](#6-hop-free-loops-the-self-loop-the-most-important-section)
-* [7. Fitting a byte budget](#7-fitting-a-byte-budget)
+* [7. Fitting a byte budget](#7-fitting-a-byte-budget) (7.1 making a finished song smaller)
 * [8. Composition recipes that worked](#8-composition-recipes-that-worked)
 * [9. Tooling](#9-tooling)
 * [10. Output file template](#10-output-file-template)
@@ -767,6 +767,27 @@ What saves bytes (in the order that mattered):
 
 Quest Theme budget (233 bytes, self-loop): header 29 B, drums 39 (entry + core + half), lead 68, chords 41, bass 56. (The old STOP + `GOTO_ADV` version was 247 B: it needed the 5-byte `GOTO_ADV`, a trimmed `bass_bar_last` track and `STOP`s.)
 
+### 7.1 Making a song smaller without changing it (Italo Night: 469 B to 365 B)
+
+`italoDiscoCompressed` (`examples/loops/italoDiscoCompressed`) plays exactly like `italoNight` and is 104 bytes smaller (22 %). Counting from the first version: 558 B (`STOP` + `GOTO_ADV`), 469 B (self-loop), 365 B (compressed). The work is structure, not notes. In order of savings:
+
+1. **Inline every track that is called once.** A track used once costs its table entry (2), its `RETURN` (1) and the call (2): 5 bytes for nothing. The 558 B version of Italo Night had 33 tracks (header 71 bytes); the compressed one has 16 (header 37 bytes).
+2. **Use the entry track as the body.** With the self-loop (section 6) the lead is one track: all 8 bars in a row, then `ATM_GOTO(itself)`. The bass and chords are the same. No `_last` tracks, no trimmed last delays.
+3. **Share a track only when it pays.** A track of length `L` used `u` times costs `L + 1 + 2 + 2u` against `u x L` inline, so it wins when `(u - 1) x L > 2u + 3`: two uses need `L >= 8`, three uses `L >= 5`.
+4. **Repeat bigger blocks.** The drums play 4 bars, twice. Put those 4 bars in one track (`REPEAT(6, pair)`, beat A, roll, delay) and call it with `REPEAT(1, half)`: the second half costs nothing. The same applies to the chords (`REPEAT(3, beat_X)` per bar).
+5. **Share the common head.** Every chord stab starts with the same kick (`ARP_OFF, SL_FRQ, VOL, NOTE, DELAY, VOL(0), DELAY, SL_VOL, VOL`). It is one `kick` track called by the five beat tracks. After the self-loop the 4th beat of the last bar is the same beat track as the others, so it needs no special case.
+6. **Transpose instead of copy, and share the start of near-identical beats.** One bass bar track, eight `SET_TRA, GOTO bar` pairs (4 bytes per bar). The bass beats `silence, root, octave, root` and `silence, root, root, octave` both start with `VOL(0), DELAY(4), VOL(63), root, DELAY(4)`: that head is one 8-byte track, the two beats only add their last two notes (5 bytes saved). Where several pieces differ only at the end, share the head. Snare roll: the slide is set once, the roll is inlined in the drum half (it is only used there), and equal neighbours collapse into one `REPEAT` (two equal bars next to each other: `REPEAT(1, bar)`).
+7. **Drop commands that do nothing.** Slides, volume and arpeggio are state that persists, so a second `SL_VOL(-3)` or `ARP_OFF` with the same value is dead weight. Only remove one after the simulator proves the timeline is unchanged.
+
+**What did not pay.** Sharing the lead between bars: bars 1 to 4 have the same rhythm (12, 12, 8, 12, 12, 8) but different intervals (E C A, F C A, E C G, D B G), so a shared track would need a different transposition and one changed note per bar, and the extra track costs more than the 5 to 9 bytes it saves. Look for repetition in the *byte stream*, not in the rhythm: a candidate is only worth a track when the same sequence of commands (or the same sequence shifted by a constant) appears with `(u - 1) x L > 2u + 3`.
+
+**How to be sure it is the same song** (the check used here, all four must hold):
+
+* all note events of the new song equal those of the old song, tick for tick;
+* the per-tick `TIMELINE` (volume and frequency of the 4 channels) equals the old one. When the old song is a `STOP` + `GOTO_ADV` loop, compare over one pass and expect differences only in the old silent restart tick. A silent channel's frequency may differ (inaudible);
+* loops 1, 2 and 3 of the new song are identical, `restarts == []`, no `STOP` after tick 0, call depth <= 7;
+* the compiled header equals the generator's bytes.
+
 ---
 
 ## 8. Composition recipes that worked
@@ -968,7 +989,7 @@ Song questTheme[] = {     // total song bytes = 233
 
 See *Quick start* and *API* at the top of this file. In short: `#include "song.h"`, create `ATMsynth ATM;`, call `ATM.play(<array name>)` in `setup()`.
 
-**Folder layout (current):** `ATMlib/examples/loops/<name>/` for songs that loop forever (Italo Night, Escaper Droid, Neon Heart, Quest Theme, Star Light, inGameSongs), `ATMlib/examples/songs/<name>/` for one-shots and long songs (Cutlass Cove, Midnight Run, Orbital Rush), `ATMlib/examples/soundEffects/` for effects (`sfxDemo`: 45 poke + 45 `playSfx` effects and 5 songs). Each song is an Arduino sketch folder with `<name>.ino`, `song.h`, `ATMconfig.h`, `bitmaps.h`: duplicate an existing folder, rename the folder and the `.ino` (the Arduino IDE wants both to match), put the data in `song.h` and change `ATM.play(<name>)`.
+**Folder layout (current):** `ATMlib/examples/loops/<name>/` for songs that loop forever (Italo Night, Italo Disco Compressed, Escaper Droid, Neon Heart, Quest Theme, Star Light, inGameSongs), `ATMlib/examples/songs/<name>/` for one-shots and long songs (Cutlass Cove, Midnight Run, Orbital Rush), `ATMlib/examples/soundEffects/` for effects (`sfxDemo`: 45 poke + 45 `playSfx` effects and 5 songs). Each song is an Arduino sketch folder with `<name>.ino`, `song.h`, `ATMconfig.h`, `bitmaps.h`: duplicate an existing folder, rename the folder and the `.ino` (the Arduino IDE wants both to match), put the data in `song.h` and change `ATM.play(<name>)`.
 
 **Several songs in one sketch:** keep the song arrays in `PROGMEM` pointer arrays (see `examples/loops/inGameSongs`).
 
@@ -996,6 +1017,7 @@ See *Quick start* and *API* at the top of this file. In short: `#include "song.h
 | Folder (in `examples/`) | Array | Style | Size | Notes |
 |---|---|---|---|---|
 | `loops/ItaloDisco` | `italoNight` | Italo disco, A minor, 8 bars | 469 B | Written at emulator tempo 17 (now `SET_TEMPO(35)` in the file; use the doubled value). Kick + arp stabs on CH1, transposed SAW bass, noise drums with fills. Chords Am F C G Am F G E. **Self-loop** (was 558 B with STOP + `GOTO_ADV`). |
+| `loops/italoDiscoCompressed` | `italoDiscoCompressed` | Italo disco, A minor, 8 bars | 365 B | Same song as `italoNight`, rewritten to be smaller (section 7.1): 16 tracks instead of 33, self-loop, `SET_TEMPO(35)`. Tick-for-tick identical playback. Generator pattern: `extras/tools/gen_quest.py`. |
 | `loops/escaperDroid` | `escaperDroid` | uptempo space, D major, 8 bars | 455 B | Same skeleton as Italo Night. ARP `0x47` / `0x37`. `ATM_CUE(1)` once per beat (inside the kick track, 2 bytes) for the game's dancing droid sprite. Self-loop (was 544 B). |
 | `loops/neonHeart` | `neonHeart` | Italo disco, E minor, 8 bars | 476 B | Tempo 36. Italo Night skeleton with new key, melody and chords: Em C G D Em C D B (dominant pulls back to Em). Chord stabs use inversions (Em, C/E, G/D, D/F#, B/D#). Self-loop (was 565 B). |
 | `songs/midnightRun` | `midnightRun` | 80s synthwave, A minor, 96 bars (~3 min) | 715 B | One-shot, fade in and out, no `GOTO_ADV`. |
