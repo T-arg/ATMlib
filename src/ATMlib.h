@@ -34,6 +34,12 @@
 #define ATM_ALT_WIRING 0
 #endif
 
+// Depth of the call stack of every channel (GOTO / REPEAT nesting). 7 = the old fixed size, 4 bytes of RAM per level per channel.
+// A song needs no more than its deepest nesting (the generators in extras report it).
+#ifndef ATM_STACK_DEPTH
+#define ATM_STACK_DEPTH 7
+#endif
+
 // No ATMconfig.h: every effect, function, and octave stays in, as before.
 #ifndef ATM_FX_VOLUME
 #define ATM_FX_VOLUME 1

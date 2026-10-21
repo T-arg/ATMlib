@@ -198,7 +198,8 @@ Waveforms, effects, functions and octaves are fixed at compile time. Copy `docs/
 
 * **Waveforms:** `ATM_WAVE_CH0` to `ATM_WAVE_CH3` = `ATM_WAVE_PULSE` (0), `ATM_WAVE_SQUARE` (1), `ATM_WAVE_NOISE` (2, use on CH3), `ATM_WAVE_SAW` (3) or `ATM_WAVE_OFF` (255, no mixer for that channel = smaller ISR and fewer cycles). If no channel is noise, the LFSR is left out of the ISR.
 * **`ATM_ALT_WIRING`:** 0 = stock Arduboy speaker on OCR4A only; 1 = also drive OCR4D (homemade or dual-pin wiring).
-* **Effects, functions, octaves:** switches such as `ATM_FX_ARP`, `ATM_FUNC_SFX`, `ATM_OCTAVE_6`. `ATM.play()` is always compiled. `ATM_FUNC_PLAYPAUSE` needs pause and resume.
+* **Effects, functions, octaves:** switches such as `ATM_FX_ARP`, `ATM_FUNC_SFX`, `ATM_OCTAVE_6`.
+* **RAM:** `ATM_STACK_DEPTH` (default 7) is the call-stack depth of every channel, 4 bytes of RAM per level per channel; set it to the deepest nesting of your song (the generators report it) to get RAM back. Too small a value corrupts memory. `ATM.play()` is always compiled. `ATM_FUNC_PLAYPAUSE` needs pause and resume.
 
 > **Warning:** the song bytes are never rewritten. If a flag is 0 and a song or sound effect still uses that effect, function or octave, playback breaks: the player ignores the command and does not consume its parameter bytes, a removed function will not compile, and an excluded note is silent. That is the sketch author's responsibility.
 

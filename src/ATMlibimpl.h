@@ -123,9 +123,9 @@ struct ch_t {
   byte note;
 
   // Nesting
-  word stackPointer[7];
-  byte stackCounter[7];
-  byte stackTrack[7]; // note 1
+  word stackPointer[ATM_STACK_DEPTH];
+  byte stackCounter[ATM_STACK_DEPTH];
+  byte stackTrack[ATM_STACK_DEPTH]; // note 1
   byte stackIndex;
   byte repeatPoint;
 
