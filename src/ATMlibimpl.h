@@ -582,24 +582,24 @@ void ATM_playroutine() {
 #endif
 #if ATM_FX_TREMOLO && ATM_FX_VIBRATO
             case 14: case 16: // SET Tremolo/Vibrato
-              ch->treviDepth = pgm_read_word(ch->ptr++);
-              ch->treviConfig = pgm_read_word(ch->ptr++) + ((cmd - 64) == 14 ? 0x00 : 0x40);
+              ch->treviDepth = pgm_read_byte(ch->ptr++);
+              ch->treviConfig = pgm_read_byte(ch->ptr++) + ((cmd - 64) == 14 ? 0x00 : 0x40);
               break;
             case 15: case 17: // Tremolo/Vibrato OFF
               ch->treviDepth = 0;
               break;
 #elif ATM_FX_TREMOLO
             case 14: // SET Tremolo
-              ch->treviDepth = pgm_read_word(ch->ptr++);
-              ch->treviConfig = pgm_read_word(ch->ptr++);
+              ch->treviDepth = pgm_read_byte(ch->ptr++);
+              ch->treviConfig = pgm_read_byte(ch->ptr++);
               break;
             case 15: // Tremolo OFF
               ch->treviDepth = 0;
               break;
 #elif ATM_FX_VIBRATO
             case 16: // SET Vibrato
-              ch->treviDepth = pgm_read_word(ch->ptr++);
-              ch->treviConfig = pgm_read_word(ch->ptr++) + 0x40;
+              ch->treviDepth = pgm_read_byte(ch->ptr++);
+              ch->treviConfig = pgm_read_byte(ch->ptr++) + 0x40;
               break;
             case 17: // Vibrato OFF
               ch->treviDepth = 0;
