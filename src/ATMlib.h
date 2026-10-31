@@ -34,6 +34,41 @@
 #define ATM_ALT_WIRING 0
 #endif
 
+// ---------------------------------------------------------------------------
+// Hardware: which timer plays the sound (chosen by the chip you compile for)
+//   ATmega32u4 (Arduboy, Leonardo, Micro): Timer 4, speaker on OC4A (pins 13 and 5)
+//   ATmega328P (Arduino UNO, Nano, Pro Mini 16 MHz): Timer 2, speaker on pin 11 (OC2A)
+// ATM_ALT_WIRING 1 also drives a second pin: OCR4D on the 32u4, pin 3 (OC2B, opposite phase) on the 328P.
+// Everything outside this block is the same for both chips. The 32u4 code is unchanged.
+// ---------------------------------------------------------------------------
+#if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega328PB__) || defined(__AVR_ATmega328__)
+  #define ATM__TIMSK    TIMSK2
+  #define ATM__TOIE     0b00000001
+  #define ATM__VECT     TIMER2_OVF_vect
+  #define ATM__PWM1     OCR2A
+  #define ATM__PWM2     OCR2B
+  #if ATM_ALT_WIRING
+    // OC2A non-inverting (pin 11) + OC2B inverting (pin 3): the speaker between the two pins gets the full swing
+    #define ATM__TIMER_INIT do { pinMode(11, OUTPUT); pinMode(3, OUTPUT); \
+      TCCR2A = 0b10110011; TCCR2B = 0b00000001; OCR2A = 0x80; OCR2B = 0x80; } while (0)
+  #else
+    #define ATM__TIMER_INIT do { pinMode(11, OUTPUT); \
+      TCCR2A = 0b10000011; TCCR2B = 0b00000001; OCR2A = 0x80; } while (0)
+  #endif
+#else
+  #define ATM__TIMSK    TIMSK4
+  #define ATM__TOIE     0b00000100
+  #define ATM__VECT     TIMER4_OVF_vect
+  #define ATM__PWM1     OCR4A
+  #define ATM__PWM2     OCR4D
+  #if ATM_ALT_WIRING
+    #define ATM__TIMER_INIT do { TCCR4A = 0b01000010; TCCR4B = 0b00000001; OCR4C = 0xFF; OCR4A = 0x80; \
+      TCCR4C = 0b01000101; OCR4D = 0x80; } while (0)
+  #else
+    #define ATM__TIMER_INIT do { TCCR4A = 0b01000010; TCCR4B = 0b00000001; OCR4C = 0xFF; OCR4A = 0x80; } while (0)
+  #endif
+#endif
+
 // Depth of the call stack of every channel (GOTO / REPEAT nesting). 7 = the old fixed size, 4 bytes of RAM per level per channel.
 // A song needs no more than its deepest nesting (the generators in extras report it).
 #ifndef ATM_STACK_DEPTH
@@ -325,7 +360,7 @@ extern void ATM_playroutine() asm("ATM_playroutine");
 #define ATM__PWM_STORE \
                 "sts  %[reg],                r26                  " "\n\t" \
                 "sts  %[reg2],               r26                  " "\n\t"
-#define ATM__PWM_REG2 [reg2] "M" _SFR_MEM_ADDR(OCR4D),
+#define ATM__PWM_REG2 [reg2] "M" _SFR_MEM_ADDR(ATM__PWM2),
 #else
 #define ATM__PWM_STORE \
                 "sts  %[reg],                r26                  " "\n\t"
@@ -334,7 +369,7 @@ extern void ATM_playroutine() asm("ATM_playroutine");
 
 #define ATMLIB_CONSTRUCT_ISR(TARGET_REGISTER) \
 uint16_t __attribute__((used)) cia, __attribute__((used)) cia_count; \
-ISR(TIMER4_OVF_vect, ISR_NAKED) { \
+ISR(ATM__VECT, ISR_NAKED) { \
   asm volatile( \
                 "push r2                                          " "\n\t" \
                 "in   r2,                    __SREG__             " "\n\t" \

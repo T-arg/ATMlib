@@ -1,6 +1,6 @@
 #include "ATMlib.h"
 
-ATMLIB_CONSTRUCT_ISR(OCR4A)
+ATMLIB_CONSTRUCT_ISR(ATM__PWM1)
 
 byte trackCount;
 byte tickRate;
@@ -202,7 +202,7 @@ static inline const byte *getTrackPointer(byte track) {
 
 
 void ATMsynth::play(const byte *song) {
-  TIMSK4 = 0b00000000;// ensure interrupt is disabled
+  ATM__TIMSK = 0;// ensure interrupt is disabled
   cia_count = 1;
   // cleanUp stuff first
   memset(channel, 0, sizeof(channel));
@@ -225,14 +225,7 @@ void ATMsynth::play(const byte *song) {
   osc[3].freq = 0x0001; // Seed LFSR
   channel[3].freq = 0x0001; // xFX
 
-  TCCR4A = 0b01000010;    // Fast-PWM 8-bit
-  TCCR4B = 0b00000001;    // 62500Hz
-  OCR4C  = 0xFF;          // Resolution to 8-bit (TOP=0xFF)
-  OCR4A  = 0x80;
-#if ATM_ALT_WIRING
-  TCCR4C = 0b01000101;
-  OCR4D  = 0x80;
-#endif
+  ATM__TIMER_INIT;
 
   // Load a melody stream and start grinding samples
   // Read track count
@@ -245,13 +238,13 @@ void ATMsynth::play(const byte *song) {
   for (unsigned n = 0; n < 4; n++) {
     channel[n].ptr = getTrackPointer(pgm_read_byte(song++));
   }
-  TIMSK4 = 0b00000100;// enable interrupt as last
+  ATM__TIMSK = ATM__TOIE;// enable interrupt as last
 }
 
 #if ATM_FUNC_STOP
 // Stop playing, unload melody
 void ATMsynth::stop() {
-  TIMSK4 = 0; // Disable interrupt
+  ATM__TIMSK = 0; // Disable interrupt
   memset(channel, 0, sizeof(channel));
   ChannelActiveMute = 0b11110000;
 #if ATM_FX_CUE || ATM_FUNC_CUE
@@ -293,7 +286,7 @@ void ATMsynth::pause() {
 void ATMsynth::resume() {
   if (!atmScorePaused) return;
   atmScorePaused = 0;
-  TIMSK4 |= 0b00000100;
+  ATM__TIMSK |= ATM__TOIE;
 }
 #endif
 
@@ -324,20 +317,13 @@ void ATMsynth::setTempo(byte t)
 void ATMsynth::playSfx(const byte *track, byte ch) {
   if (ch > 3) return;
 
-  if (!(TIMSK4 & 0b00000100)) {
+  if (!(ATM__TIMSK & ATM__TOIE)) {
     tickRate = tickRate ? tickRate : 25;
     cia = 15625 / tickRate;
     cia_count = 1;
     osc[3].freq = 0x0001;
     channel[3].freq = 0x0001;
-    TCCR4A = 0b01000010;
-    TCCR4B = 0b00000001;
-    OCR4C  = 0xFF;
-    OCR4A  = 0x80;
-#if ATM_ALT_WIRING
-    TCCR4C = 0b01000101;
-    OCR4D  = 0x80;
-#endif
+    ATM__TIMER_INIT;
     // no score loaded: do not fetch song commands from ptr == 0
     atmScorePaused = 1;
     ChannelActiveMute = 0b11110000;
@@ -351,7 +337,7 @@ void ATMsynth::playSfx(const byte *track, byte ch) {
   atmSfxMask = (uint8_t)(1 << ch);
   if (ch == 3) osc[3].freq = 0x0001;
 
-  TIMSK4 |= 0b00000100;
+  ATM__TIMSK |= ATM__TOIE;
 }
 #endif
 
@@ -740,7 +726,7 @@ void ATM_playroutine() {
 #endif
       {
         memset(channel, 0, sizeof(channel));
-        TIMSK4 = 0; // Disable interrupt
+        ATM__TIMSK = 0; // Disable interrupt
       }
     }
   }

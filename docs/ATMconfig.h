@@ -34,6 +34,9 @@
 
 // 0 = stock Arduboy speaker on OCR4A only
 // 1 = also drive OCR4D (homemade / dual-pin wiring)
+// On an ATmega328P (Arduino UNO, Nano) the sound comes from Timer 2:
+// 0 = speaker on pin 11 only (other leg to GND)
+// 1 = also pin 3, in opposite phase (speaker between pin 11 and pin 3, louder)
 #ifndef ATM_ALT_WIRING
 #define ATM_ALT_WIRING 0
 #endif

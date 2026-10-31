@@ -393,6 +393,31 @@ void loop() {
 }
 </code></pre>
 <p>A song is an array of bytes written with the <code>ATM_*</code> macros from <code>ATMcmds.h</code>. A complete 73-byte example is in section 8.7. The format is described in sections 2 and 3, and the songwriting guide starts at section 0.</p>
+<h2>Speaker pins</h2>
+<p><strong>Arduboy and other ATmega32u4 boards.</strong> ATMlib plays its sound through Timer 4 of the <strong>ATmega32u4</strong>, the chip in the Arduboy. The speaker or piezo sits between two pins of that chip, and ATMlib drives them in opposite directions (push-pull):</p>
+<ul>
+<li><strong>Arduino pin 5</strong>, which is chip pin <strong>PC6</strong></li>
+<li><strong>Arduino pin 13</strong>, which is chip pin <strong>PC7</strong></li>
+</ul>
+<p>Connect one leg of the speaker or piezo to each pin. There is no ground leg: the two pins push and pull against each other, which is louder than one pin and ground. On an Arduboy this is already wired. Any board with an ATmega32u4 (Arduino Leonardo, Micro and similar) uses the same two pins, as long as the board exposes both of them. Check your board's pinout, because some small 32u4 boards do not break out pin 13.</p>
+<p><strong>Arduino UNO, Nano and other ATmega328P boards (16 MHz).</strong> ATMlib detects the chip when you compile and uses Timer 2 instead. Nothing else changes, and the Arduboy build is exactly the same as before. The sound comes out on:</p>
+<ul>
+<li><strong>Arduino pin 11</strong>, which is chip pin <strong>PB3</strong> (OC2A). Connect the speaker or piezo between pin 11 and <strong>GND</strong>. A small speaker needs a resistor of about 100 ohm in series, a piezo can go straight on.</li>
+<li><strong>Optional: Arduino pin 3</strong>, which is chip pin <strong>PD3</strong> (OC2B). Add <code>#define ATM_ALT_WIRING 1</code> to your <code>ATMconfig.h</code> and pin 3 plays the same sound in opposite phase. Then connect the speaker between pin 11 and pin 3 (no GND), which is louder.</li>
+</ul>
+<p>Because ATMlib takes over Timer 2, <code>tone()</code> and <code>analogWrite()</code> on pins 3 and 11 do not work while it runs, and pin 11 is also the SPI data pin (MOSI). The sketch looks the same as on the Arduboy, without the Arduboy2 parts:</p>
+<pre><code class="language-cpp">#include &lt;ATMlib.h&gt;
+#include &quot;song.h&quot;           // your song
+
+ATMsynth ATM;
+
+void setup() {
+  ATM.play(starLight);      // the array name from song.h
+}
+
+void loop() {}
+</code></pre>
+<p>The UNO build is new: it compiles to the same code as before on the Arduboy, but it has not yet been tested on real UNO hardware. Boards running at 8 MHz (3.3 V Pro Mini) play everything at half speed and are not supported. Chips other than the ATmega328P and ATmega32u4 are not supported.</p>
 <h2>Library overview</h2>
 <div class="table-wrap"><table>
 <thead>
@@ -597,8 +622,9 @@ if (ATM.check(3)) {
 <p>Waveforms, effects, functions and octaves are fixed at compile time. Copy <code>docs/ATMconfig.h</code> into the sketch folder as <code>ATMconfig.h</code>, edit it and rebuild. Every flag defaults to <strong>on</strong>, including when the sketch has no <code>ATMconfig.h</code>. <code>1</code> or <code>TRUE</code> compiles a feature in, <code>0</code> or <code>FALSE</code> leaves it out.</p>
 <ul>
 <li><strong>Waveforms:</strong> <code>ATM_WAVE_CH0</code> to <code>ATM_WAVE_CH3</code> = <code>ATM_WAVE_PULSE</code> (0), <code>ATM_WAVE_SQUARE</code> (1), <code>ATM_WAVE_NOISE</code> (2, use on CH3), <code>ATM_WAVE_SAW</code> (3) or <code>ATM_WAVE_OFF</code> (255, no mixer for that channel = smaller ISR and fewer cycles). If no channel is noise, the LFSR is left out of the ISR.</li>
-<li><strong><code>ATM_ALT_WIRING</code>:</strong> 0 = stock Arduboy speaker on OCR4A only; 1 = also drive OCR4D (homemade or dual-pin wiring).</li>
-<li><strong>Effects, functions, octaves:</strong> switches such as <code>ATM_FX_ARP</code>, <code>ATM_FUNC_SFX</code>, <code>ATM_OCTAVE_6</code>. <code>ATM.play()</code> is always compiled. <code>ATM_FUNC_PLAYPAUSE</code> needs pause and resume.</li>
+<li><strong><code>ATM_ALT_WIRING</code>:</strong> 0 = stock Arduboy speaker on OCR4A only; 1 = also drive OCR4D (homemade or dual-pin wiring). On an ATmega328P (UNO, Nano): 0 = speaker on pin 11 only; 1 = also pin 3 in opposite phase.</li>
+<li><strong>Effects, functions, octaves:</strong> switches such as <code>ATM_FX_ARP</code>, <code>ATM_FUNC_SFX</code>, <code>ATM_OCTAVE_6</code>.</li>
+<li><strong>RAM:</strong> <code>ATM_STACK_DEPTH</code> (default 7) is the call-stack depth of every channel, 4 bytes of RAM per level per channel; set it to the deepest nesting of your song (the generators report it) to get RAM back. Too small a value corrupts memory. <code>ATM.play()</code> is always compiled. <code>ATM_FUNC_PLAYPAUSE</code> needs pause and resume.</li>
 </ul>
 <div class="note">
 <p><strong>Warning:</strong> the song bytes are never rewritten. If a flag is 0 and a song or sound effect still uses that effect, function or octave, playback breaks: the player ignores the command and does not consume its parameter bytes, a removed function will not compile, and an excluded note is silent. That is the sketch author's responsibility.</p>
@@ -640,6 +666,9 @@ if (ATM.check(3)) {
 
 // 0 = stock Arduboy speaker on OCR4A only
 // 1 = also drive OCR4D (homemade / dual-pin wiring)
+// On an ATmega328P (Arduino UNO, Nano) the sound comes from Timer 2:
+// 0 = speaker on pin 11 only (other leg to GND)
+// 1 = also pin 3, in opposite phase (speaker between pin 11 and pin 3, louder)
 #ifndef ATM_ALT_WIRING
 #define ATM_ALT_WIRING 0
 #endif
