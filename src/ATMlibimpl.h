@@ -190,7 +190,7 @@ uint16_t read_vle(const byte **pp) {
   byte d;
   do {
     q <<= 7;
-    d = pgm_read_byte(*pp++);
+    d = pgm_read_byte((*pp)++);
     q |= (d & 0x7F);
   } while (d & 0x80);
   return q;
