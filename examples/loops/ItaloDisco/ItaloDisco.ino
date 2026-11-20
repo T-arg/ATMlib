@@ -1,14 +1,21 @@
+// Plays on the Arduboy (with the ARDUBOY intro and T-arg logo) AND on an Arduino Uno / Duemilanove (ATmega328P):
+// on the Uno the song just plays. Speaker: pin 11 -> 100..220 ohm resistor -> speaker -> GND (a piezo can go straight on),
+// or with ATM_ALT_WIRING 1 in ATMconfig.h between pin 11 and pin 3. Board: Arduino Uno or Duemilanove (ATmega328P).
 #include <Arduino.h>
-#include <Arduboy2.h>
 #include "ATMconfig.h"
 #include <ATMlib.h>
-#include "bitmaps.h"
 #include "song.h"
+
+ATMsynth ATM;
+
+#if defined(__AVR_ATmega32U4__)
+
+#include <Arduboy2.h>
+#include "bitmaps.h"
 
 
 Arduboy2Base arduboy;
 Sprites sprites;
-ATMsynth ATM;
 
 #include "arduboy_intro.h"          // the ARDUBOY letters, a note for every letter
 
@@ -41,3 +48,16 @@ void loop() {
   }
   arduboy.display();
 }
+
+#else   // Uno, Duemilanove, Nano (ATmega328P): no screen or buttons, just the music
+
+void setup()
+{
+  ATM.play(italoNight);
+}
+
+void loop()
+{
+}
+
+#endif

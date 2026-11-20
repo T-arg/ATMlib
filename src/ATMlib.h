@@ -42,6 +42,7 @@
 // Everything outside this block is the same for both chips. The 32u4 code is unchanged.
 // ---------------------------------------------------------------------------
 #if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega328PB__) || defined(__AVR_ATmega328__)
+  // Phase-correct PWM (16 MHz / 510 = 31.4 kHz) so the sound interrupt runs at the same rate as on the 32u4; fast PWM (62.5 kHz) played everything 2x too fast.
   #define ATM__TIMSK    TIMSK2
   #define ATM__TOIE     0b00000001
   #define ATM__VECT     TIMER2_OVF_vect
@@ -50,10 +51,10 @@
   #if ATM_ALT_WIRING
     // OC2A non-inverting (pin 11) + OC2B inverting (pin 3): the speaker between the two pins gets the full swing
     #define ATM__TIMER_INIT do { pinMode(11, OUTPUT); pinMode(3, OUTPUT); \
-      TCCR2A = 0b10110011; TCCR2B = 0b00000001; OCR2A = 0x80; OCR2B = 0x80; } while (0)
+      TCCR2A = 0b10110001; TCCR2B = 0b00000001; OCR2A = 0x80; OCR2B = 0x80; } while (0)
   #else
     #define ATM__TIMER_INIT do { pinMode(11, OUTPUT); \
-      TCCR2A = 0b10000011; TCCR2B = 0b00000001; OCR2A = 0x80; } while (0)
+      TCCR2A = 0b10000001; TCCR2B = 0b00000001; OCR2A = 0x80; } while (0)
   #endif
 #else
   #define ATM__TIMSK    TIMSK4

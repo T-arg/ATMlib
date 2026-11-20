@@ -417,7 +417,29 @@ void setup() {
 
 void loop() {}
 </code></pre>
-<p>The UNO build is new: it compiles to the same code as before on the Arduboy, but it has not yet been tested on real UNO hardware. Boards running at 8 MHz (3.3 V Pro Mini) play everything at half speed and are not supported. Chips other than the ATmega328P and ATmega32u4 are not supported.</p>
+<p>The ATmega328P build (version 2.2.2) is tested on an Arduino Duemilanove (ATmega328P) and runs at the same tempo as on the Arduboy: Timer 2 runs in phase-correct PWM (16 MHz / 510 = 31.4 kHz), so the sound interrupt fires at the rate the tick counter expects. The UNO uses the same chip and clock. The Arduboy build is unchanged. Boards running at 8 MHz (3.3 V Pro Mini) play everything at half speed and are not supported. Chips other than the ATmega328P and ATmega32u4 are not supported.</p>
+<h3>Connecting a speaker safely (UNO, Nano, ATmega328P)</h3>
+<p>An ATmega328P pin is rated for about 20 mA (absolute maximum 40 mA). A bare 8 ohm speaker on a 5 V pin tries to draw several hundred mA, and because the PWM output idles at half of 5 V, the speaker also carries a steady DC current. The chip limits itself and the sound still plays, but the output driver is overstressed. Always use one of these:</p>
+<table>
+<thead><tr><th>Option</th><th>Wiring</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><strong>Piezo buzzer</strong></td><td>pin 11 to piezo to GND</td><td>Needs nothing else. Quiet, but safe.</td></tr>
+<tr><td><strong>Resistor (minimum)</strong></td><td>pin 11 to <strong>100..220 ohm</strong> to speaker to GND</td><td>Simplest. Keeps the current in range, quieter.</td></tr>
+<tr><td><strong>Capacitor + resistor (recommended)</strong></td><td>pin 11 to <strong>100 ohm</strong> to <strong>100 uF capacitor (+ toward the pin)</strong> to speaker to GND</td><td>The capacitor blocks the DC part, so the speaker only gets the audio. Better sound, much safer.</td></tr>
+<tr><td><strong>Two pins (<code>ATM_ALT_WIRING 1</code>)</strong></td><td>pin 11 to resistor to speaker to pin 3</td><td>Louder, no GND. Keep the series resistor.</td></tr>
+<tr><td><strong>Transistor stage</strong></td><td>pin 11 to <strong>1 kohm</strong> to base of a 2N2222 / BC337; speaker between 5 V and the collector, emitter to GND</td><td>Loud and proper drive for an 8 ohm speaker. Put a diode (1N4148) across the speaker.</td></tr>
+</tbody>
+</table>
+<p><strong>Color codes</strong> (4-band resistors, the last gold or silver band is the tolerance):</p>
+<table>
+<thead><tr><th>Value</th><th>Bands</th></tr></thead>
+<tbody>
+<tr><td>100 ohm</td><td>brown, black, brown</td></tr>
+<tr><td>220 ohm</td><td>red, red, brown</td></tr>
+<tr><td>1 kohm</td><td>brown, black, red</td></tr>
+</tbody>
+</table>
+<p>The 100 uF capacitor is a cylinder (electrolytic) marked <strong>100uF</strong> and a voltage of <strong>10 V or higher</strong> (16 V or 25 V are fine). It has a stripe with minus signs on the <strong>negative</strong> leg, which is also the shorter leg. Put the long (+) leg toward pin 11 and the negative leg toward the speaker.</p>
 <h2>Library overview</h2>
 <div class="table-wrap"><table>
 <thead>
@@ -445,7 +467,7 @@ void loop() {}
 </tr>
 <tr>
 <td><code>examples/loops/&lt;name&gt;/</code></td>
-<td>Songs that loop forever, one Arduino sketch per song (<code>&lt;name&gt;.ino</code>, <code>song.h</code>, <code>ATMconfig.h</code>, <code>bitmaps.h</code>). <code>inGameSongs</code> holds 30 small loops in one sketch: A switches song, B pauses</td>
+<td>Songs that loop forever, one Arduino sketch per song (<code>&lt;name&gt;.ino</code>, <code>song.h</code>, <code>ATMconfig.h</code>, <code>bitmaps.h</code>). Every song sketch (except <code>inGameSongs</code>) runs on the Arduboy, with the ARDUBOY intro and logo, and on an Arduino UNO / Duemilanove, where it just plays the song on pin 11 (<code>#if defined(__AVR_ATmega32U4__)</code> selects the Arduboy part). The wiring for the UNO is in the sketch header and in the Speaker pins section. <code>inGameSongs</code> holds 30 small loops in one sketch: A switches song, B pauses</td>
 </tr>
 <tr>
 <td><code>examples/songs/&lt;name&gt;/</code></td>

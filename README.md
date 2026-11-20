@@ -110,7 +110,29 @@ void setup() {
 void loop() {}
 ```
 
-The UNO build is new: it compiles to the same code as before on the Arduboy, but it has not yet been tested on real UNO hardware. Boards running at 8 MHz (3.3 V Pro Mini) play everything at half speed and are not supported. Chips other than the ATmega328P and ATmega32u4 are not supported.
+The ATmega328P build (version 2.2.2) is tested on an Arduino Duemilanove (ATmega328P) and runs at the same tempo as on the Arduboy: Timer 2 runs in phase-correct PWM (16 MHz / 510 = 31.4 kHz), so the sound interrupt fires at the rate the tick counter expects. The UNO uses the same chip and clock. The Arduboy build is unchanged. Boards running at 8 MHz (3.3 V Pro Mini) play everything at half speed and are not supported. Chips other than the ATmega328P and ATmega32u4 are not supported.
+
+### Connecting a speaker safely (UNO, Nano, ATmega328P)
+
+An ATmega328P pin is rated for about 20 mA (absolute maximum 40 mA). A bare 8 ohm speaker on a 5 V pin tries to draw several hundred mA, and because the PWM output idles at half of 5 V, the speaker also carries a steady DC current. The chip limits itself and the sound still plays, but the output driver is overstressed. Always use one of these:
+
+| Option | Wiring | Notes |
+|---|---|---|
+| **Piezo buzzer** | pin 11 to piezo to GND | Needs nothing else. Quiet, but safe. |
+| **Resistor (minimum)** | pin 11 to **100..220 ohm** to speaker to GND | Simplest. Keeps the current in range, quieter. |
+| **Capacitor + resistor (recommended)** | pin 11 to **100 ohm** to **100 uF capacitor (+ toward the pin)** to speaker to GND | The capacitor blocks the DC part, so the speaker only gets the audio. Better sound, much safer. |
+| **Two pins (`ATM_ALT_WIRING 1`)** | pin 11 to resistor to speaker to pin 3 | Louder, no GND. Keep the series resistor. |
+| **Transistor stage** | pin 11 to **1 kohm** to base of a 2N2222 / BC337; speaker between 5 V and the collector, emitter to GND | Loud and proper drive for an 8 ohm speaker. Put a diode (1N4148) across the speaker. |
+
+**Color codes** (4-band resistors, the last gold or silver band is the tolerance):
+
+| Value | Bands |
+|---|---|
+| 100 ohm | brown, black, brown |
+| 220 ohm | red, red, brown |
+| 1 kohm | brown, black, red |
+
+The 100 uF capacitor is a cylinder (electrolytic) marked **100uF** and a voltage of **10 V or higher** (16 V or 25 V are fine). It has a stripe with minus signs on the **negative** leg, which is also the shorter leg. Put the long (+) leg toward pin 11 and the negative leg toward the speaker.
 
 ## Library overview
 
@@ -120,7 +142,7 @@ The UNO build is new: it compiles to the same code as before on the Arduboy, but
 | `src/ATMcmds.h` | Notes C2 to D7 and all song and effect macros (`ATM_NOTE_*`, `ATM_VOL`, `ATM_GOTO`, ...), with the bytes each one uses |
 | `docs/ATMconfig.h` | Template for the compile-time options (copy it into the sketch) |
 | `docs/index.html` | The documentation web page, generated from this README by `extras/tools/readme_to_html.py` |
-| `examples/loops/<name>/` | Songs that loop forever, one Arduino sketch per song (`<name>.ino`, `song.h`, `ATMconfig.h`, `bitmaps.h`). `inGameSongs` holds 30 small loops in one sketch: A switches song, B pauses |
+| `examples/loops/<name>/` | Songs that loop forever, one Arduino sketch per song (`<name>.ino`, `song.h`, `ATMconfig.h`, `bitmaps.h`). Every song sketch (except `inGameSongs`) runs on the Arduboy, with the ARDUBOY intro and logo, and on an Arduino UNO / Duemilanove, where it just plays the song on pin 11 (`#if defined(__AVR_ATmega32U4__)` selects the Arduboy part). The wiring for the UNO is in the sketch header and in the Speaker pins section. `inGameSongs` holds 30 small loops in one sketch: A switches song, B pauses |
 | `examples/songs/<name>/` | One-shot and long songs: Cutlass Cove, Midnight Run, Orbital Rush |
 | `examples/soundEffects/` | Sound-effect examples |
 | `extras/` | Reference tables (`frequencyToTone.md`, `notesInChords.md`) and `tools/`: simulator, generators, converter |
